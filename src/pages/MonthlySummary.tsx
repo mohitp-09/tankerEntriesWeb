@@ -1,0 +1,390 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, FileText, Download, Calendar, Truck, IndianRupee, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { format, parse } from 'date-fns';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { Label, TankerEntry, DailyEntries, MonthlyData } from '../types';
+
+const MonthlySummary: React.FC = () => {
+  const { labelId, year, month } = useParams<{ 
+    labelId: string, year: string, month: string 
+  }>();
+  const [label, setLabel] = useState<Label | null>(null);
+  const [monthlyData, setMonthlyData] = useState<MonthlyData>({
+    dailyEntries: {},
+    totalTankers: 0,
+    totalCash: 0
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const monthName = format(parse(`${year}-${month}-01`, 'yyyy-MM-dd', new Date()), 'MMMM');
+
+  useEffect(() => {
+    if (user && labelId) {
+      fetchLabel();
+      fetchMonthData();
+    }
+  }, [user, labelId, year, month]);
+
+  const fetchLabel = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('labels')
+        .select('*')
+        .eq('id', labelId)
+        .eq('user_id', user?.id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setLabel(data || null);
+    } catch (error: any) {
+      toast.error('Failed to load label: ' + error.message);
+      navigate('/');
+    }
+  };
+
+  const fetchMonthData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Create date strings for first and last day of month
+      const startDate = `${year}-${month}-01`;
+      const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+      const endDate = `${year}-${month}-${lastDay}`;
+      
+      const { data, error } = await supabase
+        .from('tanker_entries')
+        .select('*')
+        .eq('label_id', labelId)
+        .eq('user_id', user?.id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date');
+
+      if (error) {
+        throw error;
+      }
+
+      // Group entries by day
+      const dailyEntries: Record<string, DailyEntries> = {};
+      let totalTankers = 0;
+      let totalCash = 0;
+      
+      (data || []).forEach(entry => {
+        const day = entry.date.split('-')[2]; // Extract day from YYYY-MM-DD
+        
+        if (!dailyEntries[day]) {
+          dailyEntries[day] = {
+            day: parseInt(day),
+            entries: [],
+            totalTankers: 0,
+            totalCash: 0
+          };
+        }
+        
+        dailyEntries[day].entries.push(entry);
+        dailyEntries[day].totalTankers += 1;
+        dailyEntries[day].totalCash += entry.cash_amount || 0;
+        
+        totalTankers += 1;
+        totalCash += entry.cash_amount || 0;
+      });
+      
+      // Sort by day
+      const sortedDailyEntries = Object.entries(dailyEntries)
+        .sort(([dayA], [dayB]) => parseInt(dayA) - parseInt(dayB))
+        .reduce((acc, [day, data]) => ({ ...acc, [day]: data }), {});
+      
+      setMonthlyData({
+        dailyEntries: sortedDailyEntries,
+        totalTankers,
+        totalCash
+      });
+    } catch (error: any) {
+      toast.error('Failed to load data: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generatePdf = async () => {
+    if (!label) return;
+    
+    setIsGeneratingPdf(true);
+    
+    try {
+      // Create a new PDF document
+      const doc = new jsPDF();
+      const title = `${label.name} - ${monthName} ${year} Summary`;
+      
+      // Add title
+      doc.setFontSize(16);
+      doc.text(title, 105, 15, { align: 'center' });
+      
+      // Add monthly totals
+      doc.setFontSize(12);
+      doc.text(`Total Tankers: ${monthlyData.totalTankers}`, 14, 25);
+      doc.text(`Total Cash: ₹${monthlyData.totalCash.toFixed(2)}`, 14, 32);
+      
+      // Add date
+      doc.setFontSize(10);
+      doc.text(`Generated on: ${format(new Date(), 'MMMM d, yyyy, h:mm a')}`, 14, 40);
+      
+      // Draw a line
+      doc.line(14, 45, 196, 45);
+      
+      let yPosition = 50;
+      
+      // Add daily entries
+      Object.entries(monthlyData.dailyEntries).forEach(([day, data]) => {
+        const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
+        
+        // Add day header
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text(`${dayDate} - ${data.totalTankers} Tankers - ₹${data.totalCash.toFixed(2)}`, 14, yPosition);
+        
+        yPosition += 8;
+        
+        // Add table for entries
+        const tableData = data.entries.map((entry, index) => [
+          (index + 1).toString(),
+          entry.time,
+          entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'
+        ]);
+        
+        // @ts-ignore (jspdf-autotable types)
+        doc.autoTable({
+          startY: yPosition,
+          head: [['#', 'Time', 'Cash Amount']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+          margin: { left: 14, right: 14 },
+          styles: { fontSize: 10 }
+        });
+        
+        // @ts-ignore (accessing internal value)
+        yPosition = doc.lastAutoTable.finalY + 10;
+        
+        // Add page if running out of space
+        if (yPosition > 270) {
+          doc.addPage();
+          yPosition = 20;
+        }
+      });
+      
+      // Save the PDF
+      doc.save(`${label.name.replace(/\s+/g, '_')}_${monthName}_${year}_Summary.pdf`);
+      toast.success('PDF report generated successfully');
+    } catch (error: any) {
+      toast.error('Failed to generate PDF: ' + error.message);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
+  };
+
+  if (isLoading && !label) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center mb-4 sm:mb-0">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => navigate(`/labels/${labelId}`)}
+            className="p-2 mr-2 rounded-full text-gray-600 hover:bg-gray-100 focus:outline-none"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </motion.button>
+          
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+              <span 
+                className="inline-block w-3 h-3 rounded-full mr-2" 
+                style={{ backgroundColor: label?.color || '#3B82F6' }}
+              />
+              {label?.name || 'Label'}: Monthly Summary
+            </h1>
+            <p className="text-gray-600">
+              {monthName} {year} summary of tanker entries
+            </p>
+          </div>
+        </div>
+        
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={generatePdf}
+          disabled={isGeneratingPdf || isLoading}
+          className="flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isGeneratingPdf ? (
+            <>
+              <Loader2 className="animate-spin h-4 w-4 mr-2" />
+              Generating PDF...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" />
+              Download as PDF
+            </>
+          )}
+        </motion.button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
+        <div className="p-4 border-b border-gray-200 flex items-center">
+          <FileText className="h-5 w-5 text-gray-500 mr-2" />
+          <h2 className="text-lg font-medium text-gray-900">Monthly Overview</h2>
+        </div>
+        
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-blue-50 rounded-lg p-4 flex items-center">
+            <div className="bg-blue-100 rounded-full p-3 mr-4">
+              <Truck className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-blue-800">Total Tankers</p>
+              <p className="text-2xl font-bold text-blue-900">{monthlyData.totalTankers}</p>
+            </div>
+          </div>
+          
+          <div className="bg-green-50 rounded-lg p-4 flex items-center">
+            <div className="bg-green-100 rounded-full p-3 mr-4">
+              <IndianRupee className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-green-800">Total Cash</p>
+              <p className="text-2xl font-bold text-green-900">
+                ₹{monthlyData.totalCash.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-200 flex items-center">
+          <Calendar className="h-5 w-5 text-gray-500 mr-2" />
+          <h2 className="text-lg font-medium text-gray-900">Daily Breakdown</h2>
+        </div>
+        
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">Loading monthly data...</p>
+          </div>
+        ) : Object.keys(monthlyData.dailyEntries).length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-gray-500">No tanker entries found for this month.</p>
+          </div>
+        ) : (
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="divide-y divide-gray-200"
+          >
+            {Object.entries(monthlyData.dailyEntries).map(([day, data]) => {
+              const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
+              
+              return (
+                <motion.div 
+                  key={day}
+                  variants={itemVariants}
+                  className="p-4"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
+                    <h3 className="text-md font-medium text-gray-900">
+                      {dayDate}
+                    </h3>
+                    <div className="mt-2 sm:mt-0 flex flex-wrap gap-3">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <Truck className="h-3 w-3 mr-1" />
+                        {data.totalTankers} Tankers
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <IndianRupee className="h-3 w-3 mr-1" />
+                        ₹{data.totalCash.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            #
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Time
+                          </th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Cash Amount
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {data.entries.map((entry, index) => (
+                          <tr key={entry.id}>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                              {index + 1}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {entry.time}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
+                              {entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default MonthlySummary;
