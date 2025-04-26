@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
-import { Truck, Mail, Lock, Loader2 } from 'lucide-react';
+import { Droplets, Mail, Lock, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Login: React.FC = () => {
@@ -76,7 +76,7 @@ const Login: React.FC = () => {
               transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
               className="inline-flex items-center justify-center p-3 bg-blue-100 rounded-full mb-4"
             >
-              <Truck className="h-8 w-8 text-blue-600" />
+              <Droplets className="h-8 w-8 text-blue-600" />
             </motion.div>
             <h2 className="text-2xl font-bold text-gray-900">
               {isSignUp ? 'Create an account' : 'Sign in to your account'}

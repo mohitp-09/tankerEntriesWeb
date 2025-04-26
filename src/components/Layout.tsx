@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Home, Truck } from 'lucide-react';
+import { LogOut, Home, Droplets } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface LayoutProps {
@@ -27,7 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
-            <Truck className="h-8 w-8 text-blue-700" />
+            <Droplets className="h-8 w-8 text-blue-700" />
             <h1 className="text-xl font-bold text-gray-900">Tanker Management</h1>
           </motion.div>
           
