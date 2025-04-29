@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, IndianRupee, Save, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Save, X, Loader2, Truck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -11,7 +11,8 @@ import { Label, TankerEntry } from '../types';
 interface TankerFormEntry {
   id?: string;
   time: string;
-  cash_amount: string; // String for form handling
+  cash_amount: string;
+  total_tankers: string;
   isNew?: boolean;
   isEditing?: boolean;
 }
@@ -81,6 +82,7 @@ const DayEntries: React.FC = () => {
         id: entry.id,
         time: entry.time,
         cash_amount: entry.cash_amount ? String(entry.cash_amount) : '',
+        total_tankers: entry.total_tankers ? String(entry.total_tankers) : '',
         isEditing: false
       }));
       
@@ -95,11 +97,11 @@ const DayEntries: React.FC = () => {
   const addNewEntry = () => {
     setFormEntries(prev => [
       ...prev, 
-      { time: '09:00', cash_amount: '', isNew: true, isEditing: true }
+      { time: '09:00', cash_amount: '', total_tankers: '', isNew: true, isEditing: true }
     ]);
   };
 
-  const updateFormEntry = (index: number, field: 'time' | 'cash_amount', value: string) => {
+  const updateFormEntry = (index: number, field: 'time' | 'cash_amount' | 'total_tankers', value: string) => {
     const newFormEntries = [...formEntries];
     newFormEntries[index] = { ...newFormEntries[index], [field]: value };
     setFormEntries(newFormEntries);
@@ -117,13 +119,11 @@ const DayEntries: React.FC = () => {
   const deleteEntry = async (index: number) => {
     const entry = formEntries[index];
     
-    // If it's a new entry that hasn't been saved yet
     if (entry.isNew) {
       setFormEntries(prev => prev.filter((_, i) => i !== index));
       return;
     }
     
-    // Otherwise, delete from database
     try {
       const { error } = await supabase
         .from('tanker_entries')
@@ -161,6 +161,7 @@ const DayEntries: React.FC = () => {
       for (let i = 0; i < formEntries.length; i++) {
         const entry = formEntries[i];
         const cashAmount = entry.cash_amount ? parseFloat(entry.cash_amount) : null;
+        const totalTankers = entry.total_tankers ? parseInt(entry.total_tankers) : null;
         
         if (entry.isNew) {
           // Insert new entry
@@ -171,7 +172,8 @@ const DayEntries: React.FC = () => {
               user_id: user.id,
               date: dateString,
               time: entry.time,
-              cash_amount: cashAmount
+              cash_amount: cashAmount,
+              total_tankers: totalTankers
             });
             
           if (error) throw error;
@@ -181,7 +183,8 @@ const DayEntries: React.FC = () => {
             .from('tanker_entries')
             .update({
               time: entry.time,
-              cash_amount: cashAmount
+              cash_amount: cashAmount,
+              total_tankers: totalTankers
             })
             .eq('id', entry.id);
             
@@ -306,7 +309,7 @@ const DayEntries: React.FC = () => {
                       
                       <div className="flex-1 sm:max-w-[200px]">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <IndianRupee className="h-4 w-4 inline mr-1" />
+                          <DollarSign className="h-4 w-4 inline mr-1" />
                           Cash Amount (Optional)
                         </label>
                         <input
@@ -316,6 +319,21 @@ const DayEntries: React.FC = () => {
                           value={entry.cash_amount}
                           onChange={(e) => updateFormEntry(index, 'cash_amount', e.target.value)}
                           placeholder="Enter amount"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        />
+                      </div>
+
+                      <div className="flex-1 sm:max-w-[200px]">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <Truck className="h-4 w-4 inline mr-1" />
+                          Total Tankers (Optional)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={entry.total_tankers}
+                          onChange={(e) => updateFormEntry(index, 'total_tankers', e.target.value)}
+                          placeholder="Enter total tankers"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                         />
                       </div>
@@ -351,8 +369,15 @@ const DayEntries: React.FC = () => {
                         
                         {entry.cash_amount && (
                           <div className="mt-1 flex items-center text-gray-600">
-                            <IndianRupee className="h-4 w-4 text-gray-500 mr-2" />
-                            <span>{parseFloat(entry.cash_amount).toFixed(2)}</span>
+                            <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
+                            <span>₹{parseFloat(entry.cash_amount).toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {entry.total_tankers && (
+                          <div className="mt-1 flex items-center text-gray-600">
+                            <Truck className="h-4 w-4 text-gray-500 mr-2" />
+                            <span>{entry.total_tankers} tankers</span>
                           </div>
                         )}
                       </div>

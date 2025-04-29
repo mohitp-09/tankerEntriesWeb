@@ -39,6 +39,7 @@ export interface Database {
           date: string
           time: string
           cash_amount: number | null
+          total_tankers: number | null
           label_id: string
           user_id: string
         }
@@ -48,6 +49,7 @@ export interface Database {
           date: string
           time: string
           cash_amount?: number | null
+          total_tankers?: number | null
           label_id: string
           user_id: string
         }
@@ -57,6 +59,7 @@ export interface Database {
           date?: string
           time?: string
           cash_amount?: number | null
+          total_tankers?: number | null
           label_id?: string
           user_id?: string
         }

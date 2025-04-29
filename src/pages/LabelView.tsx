@@ -20,7 +20,7 @@ const LabelView: React.FC = () => {
   const navigate = useNavigate();
 
   const monthYear = format(currentDate, 'MMMM yyyy');
-  const month = getMonth(currentDate) + 1; // 1-based month
+  const month = getMonth(currentDate) + 1;
   const year = getYear(currentDate);
   const daysInMonth = getDaysInMonth(currentDate);
 
@@ -55,7 +55,6 @@ const LabelView: React.FC = () => {
     try {
       setIsLoading(true);
       
-      // Create date strings for first and last day of month
       const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
       const endDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
       
@@ -74,21 +73,20 @@ const LabelView: React.FC = () => {
 
       setEntries(data || []);
       
-      // Group entries by day
       const groupedEntries: Record<string, TankerEntry[]> = {};
-      let total = 0;
+      let monthlyTotalTankers = 0;
       
       (data || []).forEach(entry => {
-        const day = entry.date.split('-')[2]; // Extract day from YYYY-MM-DD
+        const day = entry.date.split('-')[2];
         if (!groupedEntries[day]) {
           groupedEntries[day] = [];
         }
         groupedEntries[day].push(entry);
-        total += 1;
+        monthlyTotalTankers += entry.total_tankers || 1;
       });
       
       setEntriesByDay(groupedEntries);
-      setTotalTankers(total);
+      setTotalTankers(monthlyTotalTankers);
     } catch (error: any) {
       toast.error('Failed to load entries: ' + error.message);
     } finally {
@@ -106,6 +104,10 @@ const LabelView: React.FC = () => {
     const paddedDay = String(day).padStart(2, '0');
     const paddedMonth = String(month).padStart(2, '0');
     navigate(`/labels/${labelId}/${year}/${paddedMonth}/${paddedDay}`);
+  };
+
+  const getDayTotalTankers = (entries: TankerEntry[]) => {
+    return entries.reduce((total, entry) => total + (entry.total_tankers || 1), 0);
   };
 
   const containerVariants = {
@@ -229,16 +231,16 @@ const LabelView: React.FC = () => {
               </div>
             ))}
             
-            {/* First day offset */}
             {Array.from({ length: new Date(year, month-1, 1).getDay() }).map((_, i) => (
               <div key={`empty-start-${i}`} />
             ))}
             
-            {/* Calendar days */}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
-              const hasEntries = !!entriesByDay[String(day).padStart(2, '0')];
-              const entryCount = hasEntries ? entriesByDay[String(day).padStart(2, '0')].length : 0;
+              const paddedDay = String(day).padStart(2, '0');
+              const hasEntries = !!entriesByDay[paddedDay];
+              const dayEntries = entriesByDay[paddedDay] || [];
+              const dayTotalTankers = hasEntries ? getDayTotalTankers(dayEntries) : 0;
               
               return (
                 <motion.button
@@ -260,9 +262,9 @@ const LabelView: React.FC = () => {
                       <span className="relative block rounded-full h-3 w-3 bg-blue-500"></span>
                     </span>
                   )}
-                  {entryCount > 0 && (
+                  {dayTotalTankers > 0 && (
                     <span className="text-xs mt-1 block">
-                      {entryCount} {entryCount === 1 ? 'tanker' : 'tankers'}
+                      {dayTotalTankers} {dayTotalTankers === 1 ? 'tanker' : 'tankers'}
                     </span>
                   )}
                 </motion.button>
