@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, Calendar, Truck, DollarSign, Loader2, MapPin, UserCheck, UserX } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -334,7 +334,7 @@ const MonthlySummary: React.FC = () => {
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4 flex items-center">
             <div className="bg-blue-100 rounded-full p-3 mr-4">
-              <Truck className="h-6 w-6 text-blue-600" />
+              <Tractor className="h-6 w-6 text-blue-600" />
             </div>
             <div>
               <p className="text-sm font-medium text-blue-800">Total Tankers</p>
@@ -358,7 +358,7 @@ const MonthlySummary: React.FC = () => {
 
               <div className="bg-purple-50 rounded-lg p-4 flex items-center">
                 <div className="bg-purple-100 rounded-full p-3 mr-4">
-                  <DollarSign className="h-6 w-6 text-purple-600" />
+                  <IndianRupee className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-purple-800">Total Cash Taken</p>
@@ -395,7 +395,7 @@ const MonthlySummary: React.FC = () => {
           ) : (
             <div className="bg-green-50 rounded-lg p-4 flex items-center">
               <div className="bg-green-100 rounded-full p-3 mr-4">
-                <DollarSign className="h-6 w-6 text-green-600" />
+                <IndianRupee className="h-6 w-6 text-green-600" />
               </div>
               <div>
                 <p className="text-sm font-medium text-green-800">Total Cash</p>
@@ -445,7 +445,7 @@ const MonthlySummary: React.FC = () => {
                     </h3>
                     <div className="mt-2 sm:mt-0 flex flex-wrap gap-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        <Truck className="h-3 w-3 mr-1" />
+                        <Tractor className="h-3 w-3 mr-1" />
                         {data.totalTankers} Tankers
                       </span>
 
@@ -456,7 +456,7 @@ const MonthlySummary: React.FC = () => {
                             {data.totalKm.toFixed(2)} KM
                           </span>
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                            <DollarSign className="h-3 w-3 mr-1" />
+                            <IndianRupee className="h-3 w-3 mr-1" />
                             ₹{data.totalCashTaken.toFixed(2)}
                           </span>
                           {data.presentCount > 0 && (
@@ -474,7 +474,7 @@ const MonthlySummary: React.FC = () => {
                         </>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <DollarSign className="h-3 w-3 mr-1" />
+                          <IndianRupee className="h-3 w-3 mr-1" />
                           ₹{data.totalCash.toFixed(2)}
                         </span>
                       )}

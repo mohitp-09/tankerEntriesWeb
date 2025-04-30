@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Save, X, Loader2, Truck, MapPin, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, IndianRupee, Save, X, Loader2, Tractor, MapPin, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -399,7 +399,7 @@ const DayEntries: React.FC = () => {
                         
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            <Truck className="h-4 w-4 inline mr-1" />
+                            <Tractor className="h-4 w-4 inline mr-1" />
                             Total Tankers (Optional)
                           </label>
                           <input
@@ -415,7 +415,7 @@ const DayEntries: React.FC = () => {
                         {label?.is_driver_status ? (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <DollarSign className="h-4 w-4 inline mr-1" />
+                              <IndianRupee className="h-4 w-4 inline mr-1" />
                               Cash Taken
                             </label>
                             <input
@@ -431,7 +431,7 @@ const DayEntries: React.FC = () => {
                         ) : (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <DollarSign className="h-4 w-4 inline mr-1" />
+                              <IndianRupee className="h-4 w-4 inline mr-1" />
                               Cash Amount (Optional)
                             </label>
                             <input
@@ -506,14 +506,14 @@ const DayEntries: React.FC = () => {
 
                         {entry.total_tankers && (
                           <div className="mt-1 flex items-center text-gray-600">
-                            <Truck className="h-4 w-4 text-gray-500 mr-2" />
+                            <Tractor className="h-4 w-4 text-gray-500 mr-2" />
                             <span>{entry.total_tankers} tankers</span>
                           </div>
                         )}
 
                         {entry.cash_amount && !label?.is_driver_status && (
                           <div className="mt-1 flex items-center text-gray-600">
-                            <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
+                            <IndianRupee className="h-4 w-4 text-gray-500 mr-2" />
                             <span>₹{parseFloat(entry.cash_amount).toFixed(2)}</span>
                           </div>
                         )}
@@ -529,8 +529,8 @@ const DayEntries: React.FC = () => {
                             
                             {entry.cash_taken && (
                               <div className="mt-1 flex items-center text-gray-600">
-                                <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
-                                <span>₹{parseFloat(entry.cash_taken).toFixed(2)} taken</span>
+                                <IndianRupee className="h-4 w-4 text-gray-500 mr-2" />
+                                <span>{parseFloat(entry.cash_taken).toFixed(2)} taken</span>
                               </div>
                             )}
 
