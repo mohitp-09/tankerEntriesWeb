@@ -16,6 +16,7 @@ export interface Database {
           name: string
           color: string
           user_id: string
+          is_driver_status: boolean
         }
         Insert: {
           id?: string
@@ -23,6 +24,7 @@ export interface Database {
           name: string
           color: string
           user_id: string
+          is_driver_status?: boolean
         }
         Update: {
           id?: string
@@ -30,6 +32,7 @@ export interface Database {
           name?: string
           color?: string
           user_id?: string
+          is_driver_status?: boolean
         }
       }
       tanker_entries: {
@@ -42,6 +45,10 @@ export interface Database {
           total_tankers: number | null
           label_id: string
           user_id: string
+          driver_status: string | null
+          total_km: number | null
+          cash_taken: number | null
+          notes: string | null
         }
         Insert: {
           id?: string
@@ -52,6 +59,10 @@ export interface Database {
           total_tankers?: number | null
           label_id: string
           user_id: string
+          driver_status?: string | null
+          total_km?: number | null
+          cash_taken?: number | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -62,6 +73,10 @@ export interface Database {
           total_tankers?: number | null
           label_id?: string
           user_id?: string
+          driver_status?: string | null
+          total_km?: number | null
+          cash_taken?: number | null
+          notes?: string | null
         }
       }
     }

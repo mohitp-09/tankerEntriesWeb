@@ -9,6 +9,7 @@ export interface Label {
   color: string;
   user_id: string;
   created_at: string;
+  is_driver_status: boolean;
 }
 
 export interface TankerEntry {
@@ -20,6 +21,10 @@ export interface TankerEntry {
   label_id: string;
   user_id: string;
   created_at: string;
+  driver_status: 'present' | 'absent' | null;
+  total_km: number | null;
+  cash_taken: number | null;
+  notes: string | null;
 }
 
 export interface DailyEntries {
@@ -27,10 +32,18 @@ export interface DailyEntries {
   entries: TankerEntry[];
   totalTankers: number;
   totalCash: number;
+  totalKm: number;
+  totalCashTaken: number;
+  presentCount: number;
+  absentCount: number;
 }
 
 export interface MonthlyData {
   dailyEntries: Record<string, DailyEntries>;
   totalTankers: number;
   totalCash: number;
+  totalKm: number;
+  totalCashTaken: number;
+  totalPresentCount: number;
+  totalAbsentCount: number;
 }

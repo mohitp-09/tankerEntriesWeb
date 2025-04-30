@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Save, X, Loader2, Truck } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Save, X, Loader2, Truck, MapPin, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -13,6 +13,10 @@ interface TankerFormEntry {
   time: string;
   cash_amount: string;
   total_tankers: string;
+  driver_status?: 'present' | 'absent' | null;
+  total_km?: string;
+  cash_taken?: string;
+  notes?: string;
   isNew?: boolean;
   isEditing?: boolean;
 }
@@ -83,6 +87,10 @@ const DayEntries: React.FC = () => {
         time: entry.time,
         cash_amount: entry.cash_amount ? String(entry.cash_amount) : '',
         total_tankers: entry.total_tankers ? String(entry.total_tankers) : '',
+        driver_status: entry.driver_status,
+        total_km: entry.total_km ? String(entry.total_km) : '',
+        cash_taken: entry.cash_taken ? String(entry.cash_taken) : '',
+        notes: entry.notes || '',
         isEditing: false
       }));
       
@@ -97,11 +105,25 @@ const DayEntries: React.FC = () => {
   const addNewEntry = () => {
     setFormEntries(prev => [
       ...prev, 
-      { time: '09:00', cash_amount: '', total_tankers: '', isNew: true, isEditing: true }
+      { 
+        time: '09:00', 
+        cash_amount: '', 
+        total_tankers: '', 
+        driver_status: label?.is_driver_status ? 'present' : null,
+        total_km: '',
+        cash_taken: '',
+        notes: '',
+        isNew: true, 
+        isEditing: true 
+      }
     ]);
   };
 
-  const updateFormEntry = (index: number, field: 'time' | 'cash_amount' | 'total_tankers', value: string) => {
+  const updateFormEntry = (
+    index: number, 
+    field: keyof TankerFormEntry, 
+    value: string | 'present' | 'absent' | null
+  ) => {
     const newFormEntries = [...formEntries];
     newFormEntries[index] = { ...newFormEntries[index], [field]: value };
     setFormEntries(newFormEntries);
@@ -155,6 +177,11 @@ const DayEntries: React.FC = () => {
           setIsSaving(false);
           return;
         }
+        if (label?.is_driver_status && !entry.driver_status) {
+          toast.error(`Entry #${i + 1} is missing a driver status.`);
+          setIsSaving(false);
+          return;
+        }
       }
       
       // Process entries
@@ -162,6 +189,8 @@ const DayEntries: React.FC = () => {
         const entry = formEntries[i];
         const cashAmount = entry.cash_amount ? parseFloat(entry.cash_amount) : null;
         const totalTankers = entry.total_tankers ? parseInt(entry.total_tankers) : null;
+        const totalKm = entry.total_km ? parseFloat(entry.total_km) : null;
+        const cashTaken = entry.cash_taken ? parseFloat(entry.cash_taken) : null;
         
         if (entry.isNew) {
           // Insert new entry
@@ -173,7 +202,11 @@ const DayEntries: React.FC = () => {
               date: dateString,
               time: entry.time,
               cash_amount: cashAmount,
-              total_tankers: totalTankers
+              total_tankers: totalTankers,
+              driver_status: entry.driver_status,
+              total_km: totalKm,
+              cash_taken: cashTaken,
+              notes: entry.notes || null
             });
             
           if (error) throw error;
@@ -184,7 +217,11 @@ const DayEntries: React.FC = () => {
             .update({
               time: entry.time,
               cash_amount: cashAmount,
-              total_tankers: totalTankers
+              total_tankers: totalTankers,
+              driver_status: entry.driver_status,
+              total_km: totalKm,
+              cash_taken: cashTaken,
+              notes: entry.notes || null
             })
             .eq('id', entry.id);
             
@@ -247,7 +284,7 @@ const DayEntries: React.FC = () => {
               {label?.name || 'Label'}: {displayDate}
             </h1>
             <p className="text-gray-600">
-              Manage tanker entries for this day
+              Manage {label?.is_driver_status ? 'driver status' : 'tanker'} entries for this day
             </p>
           </div>
         </div>
@@ -255,7 +292,9 @@ const DayEntries: React.FC = () => {
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-gray-900">Tanker Entries</h2>
+          <h2 className="text-lg font-medium text-gray-900">
+            {label?.is_driver_status ? 'Driver Status Entries' : 'Tanker Entries'}
+          </h2>
           
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -276,7 +315,9 @@ const DayEntries: React.FC = () => {
               exit={{ opacity: 0 }}
               className="p-8 text-center"
             >
-              <p className="text-gray-500">No tanker entries for this day. Click "Add Entry" to create one.</p>
+              <p className="text-gray-500">
+                No entries for this day. Click "Add Entry" to create one.
+              </p>
             </motion.div>
           ) : (
             <motion.div 
@@ -293,52 +334,136 @@ const DayEntries: React.FC = () => {
                   className={`p-4 ${entry.isEditing ? 'bg-blue-50' : ''}`}
                 >
                   {entry.isEditing ? (
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex-1 sm:max-w-[200px]">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <Clock className="h-4 w-4 inline mr-1" />
-                          Time
-                        </label>
-                        <input
-                          type="time"
-                          value={entry.time}
-                          onChange={(e) => updateFormEntry(index, 'time', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                        />
-                      </div>
-                      
-                      <div className="flex-1 sm:max-w-[200px]">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <DollarSign className="h-4 w-4 inline mr-1" />
-                          Cash Amount (Optional)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={entry.cash_amount}
-                          onChange={(e) => updateFormEntry(index, 'cash_amount', e.target.value)}
-                          placeholder="Enter amount"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                        />
+                    <div className="flex flex-col gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <Clock className="h-4 w-4 inline mr-1" />
+                            Time
+                          </label>
+                          <input
+                            type="time"
+                            value={entry.time}
+                            onChange={(e) => updateFormEntry(index, 'time', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          />
+                        </div>
+
+                        {label?.is_driver_status ? (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Driver Status
+                              </label>
+                              <div className="flex gap-4">
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="radio"
+                                    value="present"
+                                    checked={entry.driver_status === 'present'}
+                                    onChange={() => updateFormEntry(index, 'driver_status', 'present')}
+                                    className="form-radio h-4 w-4 text-blue-600"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-700">Present</span>
+                                </label>
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="radio"
+                                    value="absent"
+                                    checked={entry.driver_status === 'absent'}
+                                    onChange={() => updateFormEntry(index, 'driver_status', 'absent')}
+                                    className="form-radio h-4 w-4 text-blue-600"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-700">Absent</span>
+                                </label>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <MapPin className="h-4 w-4 inline mr-1" />
+                                Total KM
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={entry.total_km}
+                                onChange={(e) => updateFormEntry(index, 'total_km', e.target.value)}
+                                placeholder="Enter total kilometers"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                              />
+                            </div>
+                          </>
+                        ) : null}
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <Truck className="h-4 w-4 inline mr-1" />
+                            Total Tankers (Optional)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={entry.total_tankers}
+                            onChange={(e) => updateFormEntry(index, 'total_tankers', e.target.value)}
+                            placeholder="Enter total tankers"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          />
+                        </div>
+
+                        {label?.is_driver_status ? (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <DollarSign className="h-4 w-4 inline mr-1" />
+                              Cash Taken
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={entry.cash_taken}
+                              onChange={(e) => updateFormEntry(index, 'cash_taken', e.target.value)}
+                              placeholder="Enter cash taken"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <DollarSign className="h-4 w-4 inline mr-1" />
+                              Cash Amount (Optional)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={entry.cash_amount}
+                              onChange={(e) => updateFormEntry(index, 'cash_amount', e.target.value)}
+                              placeholder="Enter amount"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            />
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex-1 sm:max-w-[200px]">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <Truck className="h-4 w-4 inline mr-1" />
-                          Total Tankers (Optional)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.total_tankers}
-                          onChange={(e) => updateFormEntry(index, 'total_tankers', e.target.value)}
-                          placeholder="Enter total tankers"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                        />
-                      </div>
+                      {label?.is_driver_status && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <FileText className="h-4 w-4 inline mr-1" />
+                            Notes (Optional)
+                          </label>
+                          <textarea
+                            value={entry.notes}
+                            onChange={(e) => updateFormEntry(index, 'notes', e.target.value)}
+                            placeholder="Add any additional notes..."
+                            rows={2}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          />
+                        </div>
+                      )}
                       
-                      <div className="flex items-end mt-auto gap-2">
+                      <div className="flex justify-end gap-2">
                         <motion.button
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
@@ -367,10 +492,15 @@ const DayEntries: React.FC = () => {
                           <span className="font-medium">{entry.time}</span>
                         </div>
                         
-                        {entry.cash_amount && (
-                          <div className="mt-1 flex items-center text-gray-600">
-                            <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
-                            <span>₹{parseFloat(entry.cash_amount).toFixed(2)}</span>
+                        {label?.is_driver_status && (
+                          <div className="mt-1 flex items-center">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              entry.driver_status === 'present' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {entry.driver_status === 'present' ? 'Present' : 'Absent'}
+                            </span>
                           </div>
                         )}
 
@@ -379,6 +509,38 @@ const DayEntries: React.FC = () => {
                             <Truck className="h-4 w-4 text-gray-500 mr-2" />
                             <span>{entry.total_tankers} tankers</span>
                           </div>
+                        )}
+
+                        {entry.cash_amount && !label?.is_driver_status && (
+                          <div className="mt-1 flex items-center text-gray-600">
+                            <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
+                            <span>₹{parseFloat(entry.cash_amount).toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {label?.is_driver_status && (
+                          <>
+                            {entry.total_km && (
+                              <div className="mt-1 flex items-center text-gray-600">
+                                <MapPin className="h-4 w-4 text-gray-500 mr-2" />
+                                <span>{entry.total_km} KM</span>
+                              </div>
+                            )}
+                            
+                            {entry.cash_taken && (
+                              <div className="mt-1 flex items-center text-gray-600">
+                                <DollarSign className="h-4 w-4 text-gray-500 mr-2" />
+                                <span>₹{parseFloat(entry.cash_taken).toFixed(2)} taken</span>
+                              </div>
+                            )}
+
+                            {entry.notes && (
+                              <div className="mt-1 flex items-center text-gray-600">
+                                <FileText className="h-4 w-4 text-gray-500 mr-2" />
+                                <span className="text-sm">{entry.notes}</span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                       

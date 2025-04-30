@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, Calendar, Truck, DollarSign, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Calendar, Truck, DollarSign, Loader2, MapPin, UserCheck, UserX } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -18,7 +18,11 @@ const MonthlySummary: React.FC = () => {
   const [monthlyData, setMonthlyData] = useState<MonthlyData>({
     dailyEntries: {},
     totalTankers: 0,
-    totalCash: 0
+    totalCash: 0,
+    totalKm: 0,
+    totalCashTaken: 0,
+    totalPresentCount: 0,
+    totalAbsentCount: 0
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -78,6 +82,10 @@ const MonthlySummary: React.FC = () => {
       const dailyEntries: Record<string, DailyEntries> = {};
       let totalTankers = 0;
       let totalCash = 0;
+      let totalKm = 0;
+      let totalCashTaken = 0;
+      let totalPresentCount = 0;
+      let totalAbsentCount = 0;
       
       (data || []).forEach(entry => {
         const day = entry.date.split('-')[2];
@@ -87,16 +95,32 @@ const MonthlySummary: React.FC = () => {
             day: parseInt(day),
             entries: [],
             totalTankers: 0,
-            totalCash: 0
+            totalCash: 0,
+            totalKm: 0,
+            totalCashTaken: 0,
+            presentCount: 0,
+            absentCount: 0
           };
         }
         
         dailyEntries[day].entries.push(entry);
         dailyEntries[day].totalTankers += entry.total_tankers || 1;
         dailyEntries[day].totalCash += entry.cash_amount || 0;
+        dailyEntries[day].totalKm += entry.total_km || 0;
+        dailyEntries[day].totalCashTaken += entry.cash_taken || 0;
+        
+        if (entry.driver_status === 'present') {
+          dailyEntries[day].presentCount++;
+          totalPresentCount++;
+        } else if (entry.driver_status === 'absent') {
+          dailyEntries[day].absentCount++;
+          totalAbsentCount++;
+        }
         
         totalTankers += entry.total_tankers || 1;
         totalCash += entry.cash_amount || 0;
+        totalKm += entry.total_km || 0;
+        totalCashTaken += entry.cash_taken || 0;
       });
       
       const sortedDailyEntries = Object.entries(dailyEntries)
@@ -106,7 +130,11 @@ const MonthlySummary: React.FC = () => {
       setMonthlyData({
         dailyEntries: sortedDailyEntries,
         totalTankers,
-        totalCash
+        totalCash,
+        totalKm,
+        totalCashTaken,
+        totalPresentCount,
+        totalAbsentCount
       });
     } catch (error: any) {
       toast.error('Failed to load data: ' + error.message);
@@ -129,35 +157,77 @@ const MonthlySummary: React.FC = () => {
       
       doc.setFontSize(12);
       doc.text(`Total Tankers: ${monthlyData.totalTankers}`, 14, 25);
-      doc.text(`Total Cash: ₹${monthlyData.totalCash.toFixed(2)}`, 14, 32);
+      
+      let yPosition = 32;
+      
+      if (label.is_driver_status) {
+        doc.text(`Total KM: ${monthlyData.totalKm.toFixed(2)}`, 14, yPosition);
+        yPosition += 7;
+        doc.text(`Total Cash Taken: ₹${monthlyData.totalCashTaken.toFixed(2)}`, 14, yPosition);
+        yPosition += 7;
+        doc.text(`Present Days: ${monthlyData.totalPresentCount}`, 14, yPosition);
+        yPosition += 7;
+        doc.text(`Absent Days: ${monthlyData.totalAbsentCount}`, 14, yPosition);
+        yPosition += 7;
+      } else {
+        doc.text(`Total Cash: ₹${monthlyData.totalCash.toFixed(2)}`, 14, yPosition);
+        yPosition += 7;
+      }
       
       doc.setFontSize(10);
-      doc.text(`Generated on: ${format(new Date(), 'MMMM d, yyyy, h:mm a')}`, 14, 40);
+      doc.text(`Generated on: ${format(new Date(), 'MMMM d, yyyy, h:mm a')}`, 14, yPosition);
       
-      doc.line(14, 45, 196, 45);
+      doc.line(14, yPosition + 5, 196, yPosition + 5);
       
-      let yPosition = 50;
+      yPosition += 10;
       
       Object.entries(monthlyData.dailyEntries).forEach(([day, data]) => {
         const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
         
         doc.setFontSize(12);
         doc.setFont(undefined, 'bold');
-        doc.text(`${dayDate} - ${data.totalTankers} Tankers - ₹${data.totalCash.toFixed(2)}`, 14, yPosition);
+        
+        let dayHeader = `${dayDate} - ${data.totalTankers} Tankers`;
+        if (label.is_driver_status) {
+          dayHeader += ` - ${data.totalKm} KM - ₹${data.totalCashTaken.toFixed(2)} taken`;
+          if (data.presentCount > 0) dayHeader += ' - Present';
+          if (data.absentCount > 0) dayHeader += ' - Absent';
+        } else {
+          dayHeader += ` - ₹${data.totalCash.toFixed(2)}`;
+        }
+        
+        doc.text(dayHeader, 14, yPosition);
         
         yPosition += 8;
         
-        const tableData = data.entries.map((entry, index) => [
-          (index + 1).toString(),
-          entry.time,
-          entry.total_tankers || 1,
-          entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'
-        ]);
+        const tableHeaders = label.is_driver_status
+          ? ['#', 'Time', 'Status', 'Tankers', 'KM', 'Cash Taken', 'Notes']
+          : ['#', 'Time', 'Tankers', 'Cash Amount'];
+        
+        const tableData = data.entries.map((entry, index) => {
+          if (label.is_driver_status) {
+            return [
+              (index + 1).toString(),
+              entry.time,
+              entry.driver_status || '-',
+              entry.total_tankers || 1,
+              entry.total_km?.toFixed(2) || '-',
+              entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-',
+              entry.notes || '-'
+            ];
+          }
+          return [
+            (index + 1).toString(),
+            entry.time,
+            entry.total_tankers || 1,
+            entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'
+          ];
+        });
         
         // @ts-ignore (jspdf-autotable types)
         doc.autoTable({
           startY: yPosition,
-          head: [['#', 'Time', 'Tankers', 'Cash Amount']],
+          head: [tableHeaders],
           body: tableData,
           theme: 'grid',
           headStyles: { fillColor: [59, 130, 246], textColor: 255 },
@@ -229,7 +299,7 @@ const MonthlySummary: React.FC = () => {
               {label?.name || 'Label'}: Monthly Summary
             </h1>
             <p className="text-gray-600">
-              {monthName} {year} summary of tanker entries
+              {monthName} {year} summary of {label?.is_driver_status ? 'driver status' : 'tanker'} entries
             </p>
           </div>
         </div>
@@ -261,7 +331,7 @@ const MonthlySummary: React.FC = () => {
           <h2 className="text-lg font-medium text-gray-900">Monthly Overview</h2>
         </div>
         
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4 flex items-center">
             <div className="bg-blue-100 rounded-full p-3 mr-4">
               <Truck className="h-6 w-6 text-blue-600" />
@@ -271,18 +341,70 @@ const MonthlySummary: React.FC = () => {
               <p className="text-2xl font-bold text-blue-900">{monthlyData.totalTankers}</p>
             </div>
           </div>
-          
-          <div className="bg-green-50 rounded-lg p-4 flex items-center">
-            <div className="bg-green-100 rounded-full p-3 mr-4">
-              <DollarSign className="h-6 w-6 text-green-600" />
+
+          {label?.is_driver_status ? (
+            <>
+              <div className="bg-green-50 rounded-lg p-4 flex items-center">
+                <div className="bg-green-100 rounded-full p-3 mr-4">
+                  <MapPin className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-green-800">Total KM</p>
+                  <p className="text-2xl font-bold text-green-900">
+                    {monthlyData.totalKm.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-purple-50 rounded-lg p-4 flex items-center">
+                <div className="bg-purple-100 rounded-full p-3 mr-4">
+                  <DollarSign className="h-6 w-6 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-purple-800">Total Cash Taken</p>
+                  <p className="text-2xl font-bold text-purple-900">
+                    ₹{monthlyData.totalCashTaken.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 rounded-lg p-4 flex items-center">
+                <div className="bg-emerald-100 rounded-full p-3 mr-4">
+                  <UserCheck className="h-6 w-6 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">Total Present Days</p>
+                  <p className="text-2xl font-bold text-emerald-900">
+                    {monthlyData.totalPresentCount}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-red-50 rounded-lg p-4 flex items-center">
+                <div className="bg-red-100 rounded-full p-3 mr-4">
+                  <UserX className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-red-800">Total Absent Days</p>
+                  <p className="text-2xl font-bold text-red-900">
+                    {monthlyData.totalAbsentCount}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="bg-green-50 rounded-lg p-4 flex items-center">
+              <div className="bg-green-100 rounded-full p-3 mr-4">
+                <DollarSign className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-green-800">Total Cash</p>
+                <p className="text-2xl font-bold text-green-900">
+                  ₹{monthlyData.totalCash.toFixed(2)}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-green-800">Total Cash</p>
-              <p className="text-2xl font-bold text-green-900">
-                ₹{monthlyData.totalCash.toFixed(2)}
-              </p>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -299,7 +421,7 @@ const MonthlySummary: React.FC = () => {
           </div>
         ) : Object.keys(monthlyData.dailyEntries).length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-gray-500">No tanker entries found for this month.</p>
+            <p className="text-gray-500">No entries found for this month.</p>
           </div>
         ) : (
           <motion.div 
@@ -326,10 +448,36 @@ const MonthlySummary: React.FC = () => {
                         <Truck className="h-3 w-3 mr-1" />
                         {data.totalTankers} Tankers
                       </span>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        ₹{data.totalCash.toFixed(2)}
-                      </span>
+
+                      {label?.is_driver_status ? (
+                        <>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {data.totalKm.toFixed(2)} KM
+                          </span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            ₹{data.totalCashTaken.toFixed(2)}
+                          </span>
+                          {data.presentCount > 0 && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                              <UserCheck className="h-3 w-3 mr-1" />
+                              Present
+                            </span>
+                          )}
+                          {data.absentCount > 0 && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              <UserX className="h-3 w-3 mr-1" />
+                              Absent
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <DollarSign className="h-3 w-3 mr-1" />
+                          ₹{data.totalCash.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   
@@ -343,12 +491,31 @@ const MonthlySummary: React.FC = () => {
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Time
                           </th>
+                          {label?.is_driver_status && (
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                          )}
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Tankers
                           </th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Cash Amount
-                          </th>
+                          {label?.is_driver_status ? (
+                            <>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                KM
+                              </th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Cash Taken
+                              </th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Notes
+                              </th>
+                            </>
+                          ) : (
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Cash Amount
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -360,12 +527,37 @@ const MonthlySummary: React.FC = () => {
                             <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                               {entry.time}
                             </td>
+                            {label?.is_driver_status && (
+                              <td className="px-3 py-2 whitespace-nowrap text-sm">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  entry.driver_status === 'present'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {entry.driver_status === 'present' ? 'Present' : 'Absent'}
+                                </span>
+                              </td>
+                            )}
                             <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
                               {entry.total_tankers || 1}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                              {entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'}
-                            </td>
+                            {label?.is_driver_status ? (
+                              <>
+                                <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
+                                  {entry.total_km?.toFixed(2) || '-'}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
+                                  {entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-'}
+                                </td>
+                                <td className="px-3 py-2 text-sm text-gray-600 max-w-xs truncate">
+                                  {entry.notes || '-'}
+                                </td>
+                              </>
+                            ) : (
+                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
+                                {entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

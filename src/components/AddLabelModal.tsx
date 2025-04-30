@@ -46,6 +46,7 @@ const AddLabelModal: React.FC<AddLabelModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [color, setColor] = useState(colorOptions[0].value);
+  const [isDriverStatus, setIsDriverStatus] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
 
@@ -53,9 +54,11 @@ const AddLabelModal: React.FC<AddLabelModalProps> = ({
     if (editingLabel) {
       setName(editingLabel.name);
       setColor(editingLabel.color);
+      setIsDriverStatus(editingLabel.is_driver_status);
     } else {
       setName('');
       setColor(colorOptions[0].value);
+      setIsDriverStatus(false);
     }
   }, [editingLabel, isOpen]);
 
@@ -79,7 +82,7 @@ const AddLabelModal: React.FC<AddLabelModalProps> = ({
         // Update existing label
         const { error } = await supabase
           .from('labels')
-          .update({ name, color })
+          .update({ name, color, is_driver_status: isDriverStatus })
           .eq('id', editingLabel.id);
 
         if (error) throw error;
@@ -88,7 +91,12 @@ const AddLabelModal: React.FC<AddLabelModalProps> = ({
         // Create new label
         const { error } = await supabase
           .from('labels')
-          .insert([{ name, color, user_id: user.id }]);
+          .insert([{ 
+            name, 
+            color, 
+            user_id: user.id,
+            is_driver_status: isDriverStatus
+          }]);
 
         if (error) throw error;
         toast.success('Label created successfully');
@@ -153,6 +161,25 @@ const AddLabelModal: React.FC<AddLabelModalProps> = ({
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     required
                   />
+                </div>
+
+                <div className="mb-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={isDriverStatus}
+                      onChange={(e) => setIsDriverStatus(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      This is a Driver Status Label
+                    </span>
+                  </label>
+                  {isDriverStatus && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Driver status labels include additional fields for tracking attendance and metrics
+                    </p>
+                  )}
                 </div>
                 
                 <div className="mb-6">
