@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: 'Tanker Management System',
-        short_name: 'TankerSys',
+        short_name: 'GangaWater',
         description: 'Professional tanker management system for tracking and managing tanker entries',
         theme_color: '#1E40AF',
         background_color: '#ffffff',
