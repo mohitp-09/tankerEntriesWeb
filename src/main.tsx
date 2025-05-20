@@ -6,12 +6,14 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import './index.css';
 
+import { registerSW } from 'virtual:pwa-register';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <App />
-        <Toaster 
+        <Toaster
           position="top-right"
           toastOptions={{
             duration: 3000,
@@ -39,3 +41,5 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>
 );
+
+registerSW();
