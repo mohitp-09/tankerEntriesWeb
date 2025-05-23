@@ -10,6 +10,7 @@ export interface Label {
   user_id: string;
   created_at: string;
   is_driver_status: boolean;
+  is_pinned: boolean;
 }
 
 export interface TankerEntry {

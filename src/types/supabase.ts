@@ -17,6 +17,7 @@ export interface Database {
           color: string
           user_id: string
           is_driver_status: boolean
+          is_pinned: boolean
         }
         Insert: {
           id?: string
@@ -25,6 +26,7 @@ export interface Database {
           color: string
           user_id: string
           is_driver_status?: boolean
+          is_pinned?: boolean
         }
         Update: {
           id?: string
@@ -33,6 +35,7 @@ export interface Database {
           color?: string
           user_id?: string
           is_driver_status?: boolean
+          is_pinned?: boolean
         }
       }
       tanker_entries: {
