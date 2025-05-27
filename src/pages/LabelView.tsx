@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, BarChart2, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { format, getDaysInMonth, getMonth, getYear, parseISO } from 'date-fns';
+import { format, getDaysInMonth, getMonth, getYear } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -54,10 +54,10 @@ const LabelView: React.FC = () => {
   const fetchEntriesForMonth = async () => {
     try {
       setIsLoading(true);
-      
+
       const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
       const endDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-      
+
       const { data, error } = await supabase
         .from('tanker_entries')
         .select('*')
@@ -72,19 +72,22 @@ const LabelView: React.FC = () => {
       }
 
       setEntries(data || []);
-      
+
       const groupedEntries: Record<string, TankerEntry[]> = {};
       let monthlyTotalTankers = 0;
-      
+
       (data || []).forEach(entry => {
         const day = entry.date.split('-')[2];
         if (!groupedEntries[day]) {
           groupedEntries[day] = [];
         }
         groupedEntries[day].push(entry);
-        monthlyTotalTankers += entry.total_tankers || 1;
+
+        // Count tankers based on the entered value, defaulting to 0 for absent drivers
+        const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
+        monthlyTotalTankers += tankerCount;
       });
-      
+
       setEntriesByDay(groupedEntries);
       setTotalTankers(monthlyTotalTankers);
     } catch (error: any) {
@@ -107,7 +110,11 @@ const LabelView: React.FC = () => {
   };
 
   const getDayTotalTankers = (entries: TankerEntry[]) => {
-    return entries.reduce((total, entry) => total + (entry.total_tankers || 1), 0);
+    return entries.reduce((total, entry) => {
+      // Count tankers based on the entered value, defaulting to 0 for absent drivers
+      const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
+      return total + tankerCount;
+    }, 0);
   };
 
   const containerVariants = {
@@ -146,11 +153,11 @@ const LabelView: React.FC = () => {
           >
             <ArrowLeft className="h-5 w-5" />
           </motion.button>
-          
+
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-              <span 
-                className="inline-block w-3 h-3 rounded-full mr-2" 
+              <span
+                className="inline-block w-3 h-3 rounded-full mr-2"
                 style={{ backgroundColor: label?.color || '#3B82F6' }}
               />
               {label?.name || 'Label'}
@@ -160,7 +167,7 @@ const LabelView: React.FC = () => {
             </p>
           </div>
         </div>
-        
+
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
@@ -178,7 +185,7 @@ const LabelView: React.FC = () => {
             <Calendar className="h-5 w-5 text-gray-500 mr-2" />
             <h2 className="text-lg font-medium text-gray-900">{monthYear}</h2>
           </div>
-          
+
           <div className="flex space-x-2">
             <motion.button
               whileHover={{ scale: 1.1 }}
@@ -200,14 +207,14 @@ const LabelView: React.FC = () => {
             </motion.button>
           </div>
         </div>
-        
+
         <div className="p-4">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <span className="text-sm font-medium text-gray-600">Total Tankers:</span>
               <span className="ml-2 text-lg font-semibold text-blue-600">{totalTankers}</span>
             </div>
-            
+
             {isLoading && (
               <div className="flex items-center text-sm text-gray-600">
                 <Loader2 className="animate-spin h-4 w-4 mr-1" />
@@ -215,33 +222,33 @@ const LabelView: React.FC = () => {
               </div>
             )}
           </div>
-          
-          <motion.div 
+
+          <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
             className="grid grid-cols-7 gap-2"
           >
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div 
-                key={day} 
+              <div
+                key={day}
                 className="text-center text-xs font-medium text-gray-500 py-1"
               >
                 {day}
               </div>
             ))}
-            
+
             {Array.from({ length: new Date(year, month-1, 1).getDay() }).map((_, i) => (
               <div key={`empty-start-${i}`} />
             ))}
-            
+
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const paddedDay = String(day).padStart(2, '0');
               const hasEntries = !!entriesByDay[paddedDay];
               const dayEntries = entriesByDay[paddedDay] || [];
               const dayTotalTankers = hasEntries ? getDayTotalTankers(dayEntries) : 0;
-              
+
               return (
                 <motion.button
                   key={day}
@@ -250,8 +257,8 @@ const LabelView: React.FC = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={() => handleDayClick(day)}
                   className={`py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 relative ${
-                    hasEntries 
-                      ? 'bg-blue-50 border-blue-200 text-blue-800' 
+                    hasEntries
+                      ? 'bg-blue-50 border-blue-200 text-blue-800'
                       : 'hover:bg-gray-50 border-gray-200 text-gray-800'
                   }`}
                 >
