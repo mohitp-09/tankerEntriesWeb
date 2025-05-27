@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, BarChart2, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { format, getDaysInMonth, getMonth, getYear } from 'date-fns';
+import { format, getDaysInMonth, getMonth, getYear, isToday } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -248,6 +248,7 @@ const LabelView: React.FC = () => {
               const hasEntries = !!entriesByDay[paddedDay];
               const dayEntries = entriesByDay[paddedDay] || [];
               const dayTotalTankers = hasEntries ? getDayTotalTankers(dayEntries) : 0;
+              const isCurrentDay = isToday(new Date(year, month - 1, day));
 
               return (
                 <motion.button
@@ -256,13 +257,17 @@ const LabelView: React.FC = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => handleDayClick(day)}
-                  className={`py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 relative ${
-                    hasEntries
-                      ? 'bg-blue-50 border-blue-200 text-blue-800'
-                      : 'hover:bg-gray-50 border-gray-200 text-gray-800'
+                  className={`py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 relative ${
+                    isCurrentDay
+                      ? 'border-emerald-500 bg-emerald-50 shadow-[0_0_0_2px_rgba(16,185,129,0.1)]'
+                      : hasEntries
+                        ? 'bg-blue-50 border-blue-200 text-blue-800'
+                        : 'hover:bg-gray-50 border-gray-200 text-gray-800'
                   }`}
                 >
-                  <span className="block text-sm font-medium">{day}</span>
+                  <span className={`block text-sm font-medium ${
+                    isCurrentDay ? 'text-emerald-700' : ''
+                  }`}>{day}</span>
                   {hasEntries && (
                     <span className="absolute top-1 right-1 flex h-3 w-3">
                       <span className="animate-ping absolute h-full w-full rounded-full bg-blue-400 opacity-75"></span>
