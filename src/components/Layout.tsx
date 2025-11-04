@@ -28,7 +28,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             whileTap={{ scale: 0.98 }}
           >
             <Droplets className="h-8 w-8 text-blue-700" />
-            <h1 className="text-xl font-bold text-gray-900">Tanker Management</h1>
+            <h1 className="text-xl font-bold text-gray-900">GangaWater Tankers</h1>
           </motion.div>
           
           <div className="flex items-center gap-4">
@@ -52,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       
       <footer className="bg-white border-t border-gray-200 py-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
-          &copy; {new Date().getFullYear()} Tanker Management. All rights reserved.
+          &copy; {new Date().getFullYear()} GangaWater Tankers. All rights reserved.
         </div>
       </footer>
     </div>

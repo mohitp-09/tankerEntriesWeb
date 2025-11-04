@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX, Fuel, Gauge } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -8,7 +8,8 @@ import 'jspdf-autotable';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Label, TankerEntry, DailyEntries, MonthlyData } from '../types';
+import { Label, TankerEntry, DailyEntries, MonthlyData, MonthlyFuelData } from '../types';
+import { getOrCreateMonthlyFuelData } from '../lib/monthlyFuelUtils';
 
 const MonthlySummary: React.FC = () => {
   const { labelId, year, month } = useParams<{
@@ -22,21 +23,38 @@ const MonthlySummary: React.FC = () => {
     totalKm: 0,
     totalCashTaken: 0,
     totalPresentCount: 0,
-    totalAbsentCount: 0
+    totalAbsentCount: 0,
+    totalDieselAdded: 0
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [monthlyFuelData, setMonthlyFuelData] = useState<MonthlyFuelData | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const monthName = format(parse(`${year}-${month}-01`, 'yyyy-MM-dd', new Date()), 'MMMM');
+  const monthName = year && month ? format(parse(`${year}-${month}-01`, 'yyyy-MM-dd', new Date()), 'MMMM') : '';
 
   useEffect(() => {
-    if (user && labelId) {
-      fetchLabel();
-      fetchMonthData();
+    if (user && labelId && year && month) {
+      const loadData = async () => {
+        await fetchLabel();
+        await fetchMonthlyFuelData();
+        await fetchMonthData();
+      };
+      loadData();
     }
   }, [user, labelId, year, month]);
+
+  const fetchMonthlyFuelData = async () => {
+    if (!user || !labelId || !year || !month) return;
+
+    try {
+      const data = await getOrCreateMonthlyFuelData(labelId, user.id, parseInt(month), parseInt(year));
+      setMonthlyFuelData(data);
+    } catch (error: any) {
+      console.error('Failed to load monthly fuel data:', error.message);
+    }
+  };
 
   const fetchLabel = async () => {
     try {
@@ -45,13 +63,19 @@ const MonthlySummary: React.FC = () => {
         .select('*')
         .eq('id', labelId)
         .eq('user_id', user?.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         throw error;
       }
 
-      setLabel(data || null);
+      if (!data) {
+        toast.error('Label not found');
+        navigate('/');
+        return;
+      }
+
+      setLabel(data);
     } catch (error: any) {
       toast.error('Failed to load label: ' + error.message);
       navigate('/');
@@ -86,6 +110,7 @@ const MonthlySummary: React.FC = () => {
       let totalCashTaken = 0;
       let totalPresentCount = 0;
       let totalAbsentCount = 0;
+      let totalDieselAdded = 0;
 
       (data || []).forEach(entry => {
         const day = entry.date.split('-')[2];
@@ -99,7 +124,8 @@ const MonthlySummary: React.FC = () => {
             totalKm: 0,
             totalCashTaken: 0,
             presentCount: 0,
-            absentCount: 0
+            absentCount: 0,
+            totalDieselAdded: 0
           };
         }
 
@@ -113,6 +139,7 @@ const MonthlySummary: React.FC = () => {
         dailyEntries[day].totalCash += entry.cash_amount || 0;
         dailyEntries[day].totalKm += entry.total_km || 0;
         dailyEntries[day].totalCashTaken += entry.cash_taken || 0;
+        dailyEntries[day].totalDieselAdded += entry.diesel_added || 0;
 
         if (entry.driver_status === 'present') {
           dailyEntries[day].presentCount++;
@@ -125,6 +152,7 @@ const MonthlySummary: React.FC = () => {
         totalCash += entry.cash_amount || 0;
         totalKm += entry.total_km || 0;
         totalCashTaken += entry.cash_taken || 0;
+        totalDieselAdded += entry.diesel_added || 0;
       });
 
       const sortedDailyEntries = Object.entries(dailyEntries)
@@ -138,7 +166,8 @@ const MonthlySummary: React.FC = () => {
         totalKm,
         totalCashTaken,
         totalPresentCount,
-        totalAbsentCount
+        totalAbsentCount,
+        totalDieselAdded
       });
     } catch (error: any) {
       toast.error('Failed to load data: ' + error.message);
@@ -169,6 +198,16 @@ const MonthlySummary: React.FC = () => {
         yPosition += 7;
         doc.text(`Total Cash Taken: ₹${monthlyData.totalCashTaken.toFixed(2)}`, 14, yPosition);
         yPosition += 7;
+        doc.text(`Total Diesel Added: ${monthlyData.totalDieselAdded.toFixed(2)} L`, 14, yPosition);
+        yPosition += 7;
+        doc.text(`Vehicle Average (This Month): ${monthlyFuelData?.diesel_average || 0} km/l`, 14, yPosition);
+        yPosition += 7;
+        doc.text(`Current Range: ${monthlyFuelData?.current_range?.toFixed(2) || '0.00'} km`, 14, yPosition);
+        yPosition += 7;
+        if (monthlyFuelData && monthlyFuelData.carried_range > 0) {
+          doc.text(`Carried Range: ${monthlyFuelData.carried_range.toFixed(2)} km`, 14, yPosition);
+          yPosition += 7;
+        }
         doc.text(`Present Days: ${monthlyData.totalPresentCount}`, 14, yPosition);
         yPosition += 7;
         doc.text(`Absent Days: ${monthlyData.totalAbsentCount}`, 14, yPosition);
@@ -205,7 +244,7 @@ const MonthlySummary: React.FC = () => {
         yPosition += 8;
 
         const tableHeaders = label.is_driver_status
-          ? ['#', 'Time', 'Status', 'Tankers', 'KM', 'Cash Taken', 'Notes']
+          ? ['#', 'Time', 'Status', 'Tankers', 'KM', 'Cash', 'Diesel (L)', 'Notes']
           : ['#', 'Time', 'Tankers', 'Cash Amount'];
 
         const tableData = data.entries.map((entry, index) => {
@@ -219,6 +258,7 @@ const MonthlySummary: React.FC = () => {
               tankerCount.toString(),
               entry.total_km?.toFixed(2) || '-',
               entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-',
+              entry.diesel_added > 0 ? entry.diesel_added.toFixed(2) : '-',
               entry.notes || '-'
             ];
           }
@@ -357,7 +397,7 @@ const MonthlySummary: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-green-800">Total KM</p>
                   <p className="text-2xl font-bold text-green-900">
-                    {monthlyData.totalKm.toFixed(2)}
+                    {(monthlyData.totalKm || 0).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -369,7 +409,7 @@ const MonthlySummary: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-purple-800">Total Cash Taken</p>
                   <p className="text-2xl font-bold text-purple-900">
-                    {monthlyData.totalCashTaken.toFixed(2)}
+                    ₹{(monthlyData.totalCashTaken || 0).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -397,6 +437,56 @@ const MonthlySummary: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              <div className="bg-amber-50 rounded-lg p-4 flex items-center">
+                <div className="bg-amber-100 rounded-full p-3 mr-4">
+                  <Fuel className="h-6 w-6 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">Total Diesel Added</p>
+                  <p className="text-2xl font-bold text-amber-900">
+                    {(monthlyData.totalDieselAdded || 0).toFixed(2)} L
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-cyan-50 rounded-lg p-4 flex items-center">
+                <div className="bg-cyan-100 rounded-full p-3 mr-4">
+                  <Gauge className="h-6 w-6 text-cyan-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-cyan-800">Average (This Month)</p>
+                  <p className="text-2xl font-bold text-cyan-900">
+                    {monthlyFuelData?.diesel_average || 0} km/l
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-teal-50 rounded-lg p-4 flex items-center">
+                <div className="bg-teal-100 rounded-full p-3 mr-4">
+                  <Fuel className="h-6 w-6 text-teal-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-teal-800">Current Range</p>
+                  <p className="text-2xl font-bold text-teal-900">
+                    {monthlyFuelData?.current_range?.toFixed(2) || '0.00'} km
+                  </p>
+                </div>
+              </div>
+
+              {monthlyFuelData && monthlyFuelData.carried_range > 0 && (
+                <div className="bg-sky-50 rounded-lg p-4 flex items-center">
+                  <div className="bg-sky-100 rounded-full p-3 mr-4">
+                    <Fuel className="h-6 w-6 text-sky-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-sky-800">Carried Range</p>
+                    <p className="text-2xl font-bold text-sky-900">
+                      {monthlyFuelData.carried_range.toFixed(2)} km
+                    </p>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="bg-green-50 rounded-lg p-4 flex items-center">
@@ -406,7 +496,7 @@ const MonthlySummary: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-green-800">Total Cash</p>
                 <p className="text-2xl font-bold text-green-900">
-                  ₹{monthlyData.totalCash.toFixed(2)}
+                  ₹{(monthlyData.totalCash || 0).toFixed(2)}
                 </p>
               </div>
             </div>
@@ -430,153 +520,116 @@ const MonthlySummary: React.FC = () => {
             <p className="text-gray-500">No entries found for this month.</p>
           </div>
         ) : (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="divide-y divide-gray-200"
-          >
-            {Object.entries(monthlyData.dailyEntries).map(([day, data]) => {
-              const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
+          <div className="overflow-x-auto">
+            <motion.table
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="min-w-full divide-y divide-gray-200"
+            >
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  {label?.is_driver_status && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  )}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tankers
+                  </th>
+                  {label?.is_driver_status ? (
+                    <>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        KM
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Cash Taken
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Diesel
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Notes
+                      </th>
+                    </>
+                  ) : (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Cash Amount
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {Object.entries(monthlyData.dailyEntries).map(([day, data]) => {
+                  const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'd MMMM, yyyy');
+                  const statusType = data.presentCount > 0 ? 'present' : data.absentCount > 0 ? 'absent' : null;
 
-              return (
-                <motion.div
-                  key={day}
-                  variants={itemVariants}
-                  className="p-4"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3">
-                    <h3 className="text-md font-medium text-gray-900">
-                      {dayDate}
-                    </h3>
-                    <div className="mt-2 sm:mt-0 flex flex-wrap gap-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        <Tractor className="h-3 w-3 mr-1" />
-                        {data.totalTankers} Tankers
-                      </span>
-
-                      {label?.is_driver_status ? (
-                        <>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {data.totalKm.toFixed(2)} KM
-                          </span>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                            <IndianRupee className="h-3 w-3 mr-1" />
-                            ₹{data.totalCashTaken.toFixed(2)}
-                          </span>
-                          {data.presentCount > 0 && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                              <UserCheck className="h-3 w-3 mr-1" />
-                              Present
-                            </span>
-                          )}
-                          {data.absentCount > 0 && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                              <UserX className="h-3 w-3 mr-1" />
-                              Absent
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <IndianRupee className="h-3 w-3 mr-1" />
-                          ₹{data.totalCash.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            #
-                          </th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Time
-                          </th>
-                          {label?.is_driver_status && (
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Status
-                            </th>
-                          )}
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Tankers
-                          </th>
-                          {label?.is_driver_status ? (
-                            <>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                KM
-                              </th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Cash Taken
-                              </th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Notes
-                              </th>
-                            </>
-                          ) : (
-                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Cash Amount
-                            </th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {data.entries.map((entry, index) => {
-                          const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
-
-                          return (
-                            <tr key={entry.id}>
-                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
-                                {index + 1}
-                              </td>
-                              <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {entry.time}
-                              </td>
-                              {label?.is_driver_status && (
-                                <td className="px-3 py-2 whitespace-nowrap text-sm">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    entry.driver_status === 'present'
-                                      ? 'bg-green-100 text-green-800'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {entry.driver_status === 'present' ? 'Present' : 'Absent'}
-                                  </span>
-                                </td>
-                              )}
-                              <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                                {tankerCount}
-                              </td>
-                              {label?.is_driver_status ? (
+                  return (
+                    <motion.tr
+                      key={day}
+                      variants={itemVariants}
+                      className="hover:bg-gray-50 transition-colors duration-150"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {dayDate}
+                      </td>
+                      {label?.is_driver_status && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {statusType ? (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              statusType === 'present'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {statusType === 'present' ? (
                                 <>
-                                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                                    {entry.total_km?.toFixed(2) || '-'}
-                                  </td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                                    {entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-600 max-w-xs truncate">
-                                    {entry.notes || '-'}
-                                  </td>
+                                  <UserCheck className="h-3 w-3 mr-1" />
+                                  Present
                                 </>
                               ) : (
-                                <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-600">
-                                  {entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'}
-                                </td>
+                                <>
+                                  <UserX className="h-3 w-3 mr-1" />
+                                  Absent
+                                </>
                               )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {data.totalTankers}
+                      </td>
+                      {label?.is_driver_status ? (
+                        <>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {(data.totalKm || 0).toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            ₹{(data.totalCashTaken || 0).toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {data.totalDieselAdded > 0 ? `${(data.totalDieselAdded || 0).toFixed(2)} L` : '-'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                            {data.entries.map(e => e.notes).filter(Boolean).join(', ') || '-'}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          ₹{(data.totalCash || 0).toFixed(2)}
+                        </td>
+                      )}
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </motion.table>
+          </div>
         )}
       </div>
     </div>

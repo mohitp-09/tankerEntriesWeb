@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, IndianRupee, Save, X, Loader2, Tractor, MapPin, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, IndianRupee, Save, X, Loader2, Tractor, MapPin, FileText, Fuel } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Label, TankerEntry } from '../types';
+import { recalculateMonthlyRange } from '../lib/monthlyFuelUtils';
 
 interface TankerFormEntry {
   id?: string;
@@ -17,6 +18,7 @@ interface TankerFormEntry {
   total_km?: string;
   cash_taken?: string;
   notes?: string;
+  diesel_added?: string;
   isNew?: boolean;
   isEditing?: boolean;
 }
@@ -50,13 +52,19 @@ const DayEntries: React.FC = () => {
         .select('*')
         .eq('id', labelId)
         .eq('user_id', user?.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         throw error;
       }
 
-      setLabel(data || null);
+      if (!data) {
+        toast.error('Label not found');
+        navigate('/');
+        return;
+      }
+
+      setLabel(data);
     } catch (error: any) {
       toast.error('Failed to load label: ' + error.message);
       navigate('/');
@@ -91,6 +99,7 @@ const DayEntries: React.FC = () => {
         total_km: entry.total_km ? String(entry.total_km) : '',
         cash_taken: entry.cash_taken ? String(entry.cash_taken) : '',
         notes: entry.notes || '',
+        diesel_added: entry.diesel_added ? String(entry.diesel_added) : '',
         isEditing: false
       }));
       
@@ -104,17 +113,18 @@ const DayEntries: React.FC = () => {
 
   const addNewEntry = () => {
     setFormEntries(prev => [
-      ...prev, 
-      { 
-        time: '09:00', 
-        cash_amount: '', 
-        total_tankers: '', 
+      ...prev,
+      {
+        time: '09:00',
+        cash_amount: '',
+        total_tankers: '',
         driver_status: label?.is_driver_status ? 'present' : null,
         total_km: '',
         cash_taken: '',
         notes: '',
-        isNew: true, 
-        isEditing: true 
+        diesel_added: '',
+        isNew: true,
+        isEditing: true
       }
     ]);
   };
@@ -191,6 +201,7 @@ const DayEntries: React.FC = () => {
         const totalTankers = entry.total_tankers ? parseInt(entry.total_tankers) : null;
         const totalKm = entry.total_km ? parseFloat(entry.total_km) : null;
         const cashTaken = entry.cash_taken ? parseFloat(entry.cash_taken) : null;
+        const dieselAdded = entry.diesel_added ? parseFloat(entry.diesel_added) : 0;
         
         if (entry.isNew) {
           // Insert new entry
@@ -206,7 +217,8 @@ const DayEntries: React.FC = () => {
               driver_status: entry.driver_status,
               total_km: totalKm,
               cash_taken: cashTaken,
-              notes: entry.notes || null
+              notes: entry.notes || null,
+              diesel_added: dieselAdded
             });
             
           if (error) throw error;
@@ -221,7 +233,8 @@ const DayEntries: React.FC = () => {
               driver_status: entry.driver_status,
               total_km: totalKm,
               cash_taken: cashTaken,
-              notes: entry.notes || null
+              notes: entry.notes || null,
+              diesel_added: dieselAdded
             })
             .eq('id', entry.id);
             
@@ -230,6 +243,11 @@ const DayEntries: React.FC = () => {
       }
       
       toast.success('Entries saved successfully');
+
+      if (label?.is_driver_status && year && month) {
+        await recalculateMonthlyRange(labelId!, user.id, parseInt(month), parseInt(year));
+      }
+
       await fetchEntriesForDay(); // Refresh data
     } catch (error: any) {
       toast.error('Failed to save entries: ' + error.message);
@@ -413,21 +431,39 @@ const DayEntries: React.FC = () => {
                         </div>
 
                         {label?.is_driver_status ? (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              <IndianRupee className="h-4 w-4 inline mr-1" />
-                              Cash Taken
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={entry.cash_taken}
-                              onChange={(e) => updateFormEntry(index, 'cash_taken', e.target.value)}
-                              placeholder="Enter cash taken"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            />
-                          </div>
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <IndianRupee className="h-4 w-4 inline mr-1" />
+                                Cash Taken
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={entry.cash_taken}
+                                onChange={(e) => updateFormEntry(index, 'cash_taken', e.target.value)}
+                                placeholder="Enter cash taken"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <Fuel className="h-4 w-4 inline mr-1" />
+                                Diesel Added (L)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={entry.diesel_added}
+                                onChange={(e) => updateFormEntry(index, 'diesel_added', e.target.value)}
+                                placeholder="Enter diesel in liters"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                              />
+                            </div>
+                          </>
                         ) : (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -531,6 +567,13 @@ const DayEntries: React.FC = () => {
                               <div className="mt-1 flex items-center text-gray-600">
                                 <IndianRupee className="h-4 w-4 text-gray-500 mr-2" />
                                 <span>{parseFloat(entry.cash_taken).toFixed(2)} taken</span>
+                              </div>
+                            )}
+
+                            {entry.diesel_added && parseFloat(entry.diesel_added) > 0 && (
+                              <div className="mt-1 flex items-center text-gray-600">
+                                <Fuel className="h-4 w-4 text-gray-500 mr-2" />
+                                <span>{parseFloat(entry.diesel_added).toFixed(2)} L diesel</span>
                               </div>
                             )}
 
