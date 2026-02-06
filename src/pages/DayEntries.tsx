@@ -14,7 +14,7 @@ interface TankerFormEntry {
   time: string;
   cash_amount: string;
   total_tankers: string;
-  driver_status?: 'present' | 'absent' | null;
+  driver_status?: 'present' | 'absent' | 'half_day' | null;
   total_km?: string;
   cash_taken?: string;
   notes?: string;
@@ -130,9 +130,9 @@ const DayEntries: React.FC = () => {
   };
 
   const updateFormEntry = (
-    index: number, 
-    field: keyof TankerFormEntry, 
-    value: string | 'present' | 'absent' | null
+    index: number,
+    field: keyof TankerFormEntry,
+    value: string | 'present' | 'absent' | 'half_day' | null
   ) => {
     const newFormEntries = [...formEntries];
     newFormEntries[index] = { ...newFormEntries[index], [field]: value };
@@ -373,7 +373,7 @@ const DayEntries: React.FC = () => {
                               <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Driver Status
                               </label>
-                              <div className="flex gap-4">
+                              <div className="flex flex-wrap gap-4">
                                 <label className="inline-flex items-center">
                                   <input
                                     type="radio"
@@ -393,6 +393,16 @@ const DayEntries: React.FC = () => {
                                     className="form-radio h-4 w-4 text-blue-600"
                                   />
                                   <span className="ml-2 text-sm text-gray-700">Absent</span>
+                                </label>
+                                <label className="inline-flex items-center">
+                                  <input
+                                    type="radio"
+                                    value="half_day"
+                                    checked={entry.driver_status === 'half_day'}
+                                    onChange={() => updateFormEntry(index, 'driver_status', 'half_day')}
+                                    className="form-radio h-4 w-4 text-blue-600"
+                                  />
+                                  <span className="ml-2 text-sm text-gray-700">Half Day</span>
                                 </label>
                               </div>
                             </div>
@@ -531,11 +541,13 @@ const DayEntries: React.FC = () => {
                         {label?.is_driver_status && (
                           <div className="mt-1 flex items-center">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              entry.driver_status === 'present' 
-                                ? 'bg-green-100 text-green-800' 
+                              entry.driver_status === 'present'
+                                ? 'bg-green-100 text-green-800'
+                                : entry.driver_status === 'half_day'
+                                ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                             }`}>
-                              {entry.driver_status === 'present' ? 'Present' : 'Absent'}
+                              {entry.driver_status === 'present' ? 'Present' : entry.driver_status === 'half_day' ? 'Half Day' : 'Absent'}
                             </span>
                           </div>
                         )}

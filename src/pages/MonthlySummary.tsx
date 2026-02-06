@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX, Fuel, Gauge } from 'lucide-react';
+import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX, Fuel, Gauge, Hourglass } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parse } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -10,6 +10,12 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Label, TankerEntry, DailyEntries, MonthlyData, MonthlyFuelData } from '../types';
 import { getOrCreateMonthlyFuelData } from '../lib/monthlyFuelUtils';
+
+const calculateHalfDayConversion = (halfDayCount: number) => {
+  const convertedPresent = Math.floor(halfDayCount / 2);
+  const remainingHalfDays = halfDayCount % 2;
+  return { convertedPresent, remainingHalfDays };
+};
 
 const MonthlySummary: React.FC = () => {
   const { labelId, year, month } = useParams<{
@@ -24,6 +30,7 @@ const MonthlySummary: React.FC = () => {
     totalCashTaken: 0,
     totalPresentCount: 0,
     totalAbsentCount: 0,
+    totalHalfDayCount: 0,
     totalDieselAdded: 0
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +117,7 @@ const MonthlySummary: React.FC = () => {
       let totalCashTaken = 0;
       let totalPresentCount = 0;
       let totalAbsentCount = 0;
+      let totalHalfDayCount = 0;
       let totalDieselAdded = 0;
 
       (data || []).forEach(entry => {
@@ -125,13 +133,13 @@ const MonthlySummary: React.FC = () => {
             totalCashTaken: 0,
             presentCount: 0,
             absentCount: 0,
+            halfDayCount: 0,
             totalDieselAdded: 0
           };
         }
 
         dailyEntries[day].entries.push(entry);
 
-        // Count tankers based on the entered value, defaulting to 0 for absent drivers
         const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
         dailyEntries[day].totalTankers += tankerCount;
         totalTankers += tankerCount;
@@ -147,6 +155,9 @@ const MonthlySummary: React.FC = () => {
         } else if (entry.driver_status === 'absent') {
           dailyEntries[day].absentCount++;
           totalAbsentCount++;
+        } else if (entry.driver_status === 'half_day') {
+          dailyEntries[day].halfDayCount++;
+          totalHalfDayCount++;
         }
 
         totalCash += entry.cash_amount || 0;
@@ -167,6 +178,7 @@ const MonthlySummary: React.FC = () => {
         totalCashTaken,
         totalPresentCount,
         totalAbsentCount,
+        totalHalfDayCount,
         totalDieselAdded
       });
     } catch (error: any) {
@@ -212,6 +224,13 @@ const MonthlySummary: React.FC = () => {
         yPosition += 7;
         doc.text(`Absent Days: ${monthlyData.totalAbsentCount}`, 14, yPosition);
         yPosition += 7;
+        const halfDayConversion = calculateHalfDayConversion(monthlyData.totalHalfDayCount);
+        doc.text(`Half Days: ${monthlyData.totalHalfDayCount}`, 14, yPosition);
+        yPosition += 7;
+        if (monthlyData.totalHalfDayCount > 0) {
+          doc.text(`Half Days Converted: ${halfDayConversion.convertedPresent} day${halfDayConversion.convertedPresent !== 1 ? 's' : ''} (${halfDayConversion.remainingHalfDays} remaining)`, 14, yPosition);
+          yPosition += 7;
+        }
       } else {
         doc.text(`Total Cash: ₹${monthlyData.totalCash.toFixed(2)}`, 14, yPosition);
         yPosition += 7;
@@ -249,12 +268,13 @@ const MonthlySummary: React.FC = () => {
 
         const tableData = data.entries.map((entry, index) => {
           const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
+          const statusDisplay = entry.driver_status === 'half_day' ? 'Half Day' : entry.driver_status || '-';
 
           if (label.is_driver_status) {
             return [
               (index + 1).toString(),
               entry.time,
-              entry.driver_status || '-',
+              statusDisplay,
               tankerCount.toString(),
               entry.total_km?.toFixed(2) || '-',
               entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-',
@@ -438,6 +458,24 @@ const MonthlySummary: React.FC = () => {
                 </div>
               </div>
 
+              <div className="bg-orange-50 rounded-lg p-4 flex items-center">
+                <div className="bg-orange-100 rounded-full p-3 mr-4">
+                  <Hourglass className="h-6 w-6 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-orange-800">Total Half Days</p>
+                  <p className="text-2xl font-bold text-orange-900">
+                    {monthlyData.totalHalfDayCount}
+                  </p>
+                  {monthlyData.totalHalfDayCount > 0 && (
+                    <p className="text-xs text-orange-700 mt-1">
+                      {calculateHalfDayConversion(monthlyData.totalHalfDayCount).convertedPresent} day{calculateHalfDayConversion(monthlyData.totalHalfDayCount).convertedPresent !== 1 ? 's' : ''} converted
+                      {calculateHalfDayConversion(monthlyData.totalHalfDayCount).remainingHalfDays > 0 && ` + ${calculateHalfDayConversion(monthlyData.totalHalfDayCount).remainingHalfDays} remaining`}
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="bg-amber-50 rounded-lg p-4 flex items-center">
                 <div className="bg-amber-100 rounded-full p-3 mr-4">
                   <Fuel className="h-6 w-6 text-amber-600" />
@@ -565,7 +603,7 @@ const MonthlySummary: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {Object.entries(monthlyData.dailyEntries).map(([day, data]) => {
                   const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'd MMMM, yyyy');
-                  const statusType = data.presentCount > 0 ? 'present' : data.absentCount > 0 ? 'absent' : null;
+                  const statusType = data.presentCount > 0 ? 'present' : data.halfDayCount > 0 ? 'half_day' : data.absentCount > 0 ? 'absent' : null;
 
                   return (
                     <motion.tr
@@ -582,12 +620,19 @@ const MonthlySummary: React.FC = () => {
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               statusType === 'present'
                                 ? 'bg-emerald-100 text-emerald-800'
+                                : statusType === 'half_day'
+                                ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
                             }`}>
                               {statusType === 'present' ? (
                                 <>
                                   <UserCheck className="h-3 w-3 mr-1" />
                                   Present
+                                </>
+                              ) : statusType === 'half_day' ? (
+                                <>
+                                  <Hourglass className="h-3 w-3 mr-1" />
+                                  Half Day
                                 </>
                               ) : (
                                 <>

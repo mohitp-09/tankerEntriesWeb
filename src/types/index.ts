@@ -24,7 +24,7 @@ export interface TankerEntry {
   label_id: string;
   user_id: string;
   created_at: string;
-  driver_status: 'present' | 'absent' | null;
+  driver_status: 'present' | 'absent' | 'half_day' | null;
   total_km: number | null;
   cash_taken: number | null;
   notes: string | null;
@@ -40,6 +40,7 @@ export interface DailyEntries {
   totalCashTaken: number;
   presentCount: number;
   absentCount: number;
+  halfDayCount: number;
   totalDieselAdded: number;
 }
 
@@ -51,6 +52,7 @@ export interface MonthlyData {
   totalCashTaken: number;
   totalPresentCount: number;
   totalAbsentCount: number;
+  totalHalfDayCount: number;
   totalDieselAdded: number;
 }
 
