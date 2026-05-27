@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Download, Calendar, Tractor, IndianRupee, Loader2, MapPin, UserCheck, UserX, Fuel, Gauge, Hourglass } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parse } from 'date-fns';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Label, TankerEntry, DailyEntries, MonthlyData, MonthlyFuelData } from '../types';
+import { Label, DailyEntries, MonthlyData, MonthlyFuelData } from '../types';
 import { getOrCreateMonthlyFuelData } from '../lib/monthlyFuelUtils';
+
+import html2pdf from 'html2pdf.js';
+import signatureImg from '../assets/signature.png';
 
 const calculateHalfDayConversion = (halfDayCount: number) => {
   const convertedPresent = Math.floor(halfDayCount / 2);
@@ -190,130 +191,224 @@ const MonthlySummary: React.FC = () => {
 
   const generatePdf = async () => {
     if (!label) return;
-
     setIsGeneratingPdf(true);
 
     try {
-      const doc = new jsPDF();
-      const title = `${label.name} - ${monthName} ${year} Summary`;
+      // 1. Convert entries to an array and sort by day
+      const allRows = Object.entries(monthlyData.dailyEntries).sort(
+        ([dayA], [dayB]) => parseInt(dayA, 10) - parseInt(dayB, 10)
+      );
 
-      doc.setFontSize(16);
-      doc.text(title, 105, 15, { align: 'center' });
+      // 2. Chunk the data (16 rows for the first page to fit headers, 24 for the rest)
+      const ROWS_PER_FIRST_PAGE = 15;
+      const ROWS_PER_SUBSEQUENT_PAGE = 24;
+      const pages = [];
 
-      doc.setFontSize(12);
-      doc.text(`Total Tankers: ${monthlyData.totalTankers}`, 14, 25);
-
-      let yPosition = 32;
-
-      if (label.is_driver_status) {
-        doc.text(`Total KM: ${monthlyData.totalKm.toFixed(2)}`, 14, yPosition);
-        yPosition += 7;
-        doc.text(`Total Cash Taken: ₹${monthlyData.totalCashTaken.toFixed(2)}`, 14, yPosition);
-        yPosition += 7;
-        doc.text(`Total Diesel Added: ${monthlyData.totalDieselAdded.toFixed(2)} L`, 14, yPosition);
-        yPosition += 7;
-        doc.text(`Vehicle Average (This Month): ${monthlyFuelData?.diesel_average || 0} km/l`, 14, yPosition);
-        yPosition += 7;
-        doc.text(`Current Range: ${monthlyFuelData?.current_range?.toFixed(2) || '0.00'} km`, 14, yPosition);
-        yPosition += 7;
-        if (monthlyFuelData && monthlyFuelData.carried_range > 0) {
-          doc.text(`Carried Range: ${monthlyFuelData.carried_range.toFixed(2)} km`, 14, yPosition);
-          yPosition += 7;
-        }
-        doc.text(`Present Days: ${monthlyData.totalPresentCount}`, 14, yPosition);
-        yPosition += 7;
-        doc.text(`Absent Days: ${monthlyData.totalAbsentCount}`, 14, yPosition);
-        yPosition += 7;
-        const halfDayConversion = calculateHalfDayConversion(monthlyData.totalHalfDayCount);
-        doc.text(`Half Days: ${monthlyData.totalHalfDayCount}`, 14, yPosition);
-        yPosition += 7;
-        if (monthlyData.totalHalfDayCount > 0) {
-          doc.text(`Half Days Converted: ${halfDayConversion.convertedPresent} day${halfDayConversion.convertedPresent !== 1 ? 's' : ''} (${halfDayConversion.remainingHalfDays} remaining)`, 14, yPosition);
-          yPosition += 7;
+      if (allRows.length > 0) {
+        pages.push(allRows.slice(0, ROWS_PER_FIRST_PAGE));
+        let remaining = allRows.slice(ROWS_PER_FIRST_PAGE);
+        while (remaining.length > 0) {
+          pages.push(remaining.slice(0, ROWS_PER_SUBSEQUENT_PAGE));
+          remaining = remaining.slice(ROWS_PER_SUBSEQUENT_PAGE);
         }
       } else {
-        doc.text(`Total Cash: ₹${monthlyData.totalCash.toFixed(2)}`, 14, yPosition);
-        yPosition += 7;
+        pages.push([]); // Generate at least one empty page if no data
       }
 
-      doc.setFontSize(10);
-      doc.text(`Generated on: ${format(new Date(), 'MMMM d, yyyy, h:mm a')}`, 14, yPosition);
+      // 3. Define the Overview HTML block (Only shown on Page 1)
+      let overviewHtml = '';
+      if (label.is_driver_status) {
+        overviewHtml = `
+          <table style="width: 100%; border-collapse: collapse; border: none;">
+            <tr>
+              <td style="width: 50%; padding: 0; border: none; vertical-align: top;">
+                <p style="margin: 0 0 5px 0; font-size: 9.5pt; color: #4b5563;"><strong>Total Tankers:</strong> <span style="color: #111827;">${monthlyData.totalTankers}</span></p>
+                <p style="margin: 0 0 5px 0; font-size: 9.5pt; color: #4b5563;"><strong>Total KM:</strong> <span style="color: #111827;">${(monthlyData.totalKm || 0).toFixed(2)}</span></p>
+                <p style="margin: 0; font-size: 9.5pt; color: #4b5563;"><strong>Cash Taken:</strong> <span style="color: #111827;">₹${(monthlyData.totalCashTaken || 0).toFixed(2)}</span></p>
+              </td>
+              <td style="width: 50%; padding: 0; border: none; vertical-align: top;">
+                <p style="margin: 0 0 5px 0; font-size: 9.5pt; color: #4b5563;"><strong>Diesel Added:</strong> <span style="color: #111827;">${(monthlyData.totalDieselAdded || 0).toFixed(2)} L</span></p>
+                <p style="margin: 0; font-size: 9.5pt; color: #4b5563;"><strong>Attendance:</strong> <span style="color: #10b981; font-weight: bold;">${monthlyData.totalPresentCount} P</span>, <span style="color: #ef4444; font-weight: bold;">${monthlyData.totalAbsentCount} A</span>, <span style="color: #f59e0b; font-weight: bold;">${monthlyData.totalHalfDayCount} HD</span></p>
+              </td>
+            </tr>
+          </table>
+        `;
+      } else {
+        overviewHtml = `
+          <div>
+            <p style="margin: 0 0 5px 0; font-size: 10.5pt; color: #4b5563;"><strong>Total Tankers Delivered:</strong> <span style="color: #111827;">${monthlyData.totalTankers}</span></p>
+            <p style="margin: 0; font-size: 10.5pt; color: #4b5563;"><strong>Total Cash Logged:</strong> <span style="color: #111827;">₹${monthlyData.totalCash.toFixed(2)}</span></p>
+          </div>
+        `;
+      }
 
-      doc.line(14, yPosition + 5, 196, yPosition + 5);
+      // 4. Define the Table Headers (Repeated on every page)
+      let tableHeaders = '';
+      if (label.is_driver_status) {
+        tableHeaders = `
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: left; width: 12%;">Date</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: center; width: 14%;">Status</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: center; width: 10%;">Tankers</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: center; width: 12%;">KM</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: right; width: 14%;">Cash Taken</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: center; width: 12%;">Diesel (L)</th>
+          <th style="padding: 10px 8px; border: 1px solid #2c3e50; text-align: left; width: 26%;">Notes</th>
+        `;
+      } else {
+        tableHeaders = `
+          <th style="padding: 10px 12px; border: 1px solid #2c3e50; text-align: left; width: 40%;">Date (${monthName} ${year})</th>
+          <th style="padding: 10px 12px; border: 1px solid #2c3e50; text-align: center; width: 30%;">Tankers Delivered</th>
+          <th style="padding: 10px 12px; border: 1px solid #2c3e50; text-align: right; width: 30%;">Cash Amount</th>
+        `;
+      }
 
-      yPosition += 10;
+      // 5. Build the Master HTML String Page by Page
+      let htmlContent = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333333; background-color: #ffffff; width: 100%;">`;
 
-      Object.entries(monthlyData.dailyEntries)
-        .sort(([dayA], [dayB]) => parseInt(dayA, 10) - parseInt(dayB, 10))
-        .forEach(([day, data]) => {
-        const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
+      pages.forEach((pageRows, pageIndex) => {
+        const isFirstPage = pageIndex === 0;
+        const isLastPage = pageIndex === pages.length - 1;
+        const pageBreakClass = isFirstPage ? '' : 'page-break'; // Triggers a clean cut before this div
 
-        doc.setFontSize(12);
-        doc.setFont(undefined, 'bold');
+        htmlContent += `
+        <div class="${pageBreakClass}" style="padding: 15mm; box-sizing: border-box; position: relative;">
+        `;
 
-        let dayHeader = `${dayDate} - ${data.totalTankers} Tankers`;
-        if (label.is_driver_status) {
-          dayHeader += ` - ${data.totalKm} KM - ₹${data.totalCashTaken.toFixed(2)} taken`;
-          if (data.presentCount > 0) dayHeader += ' - Present';
-          if (data.absentCount > 0) dayHeader += ' - Absent';
-        } else {
-          dayHeader += ` - ₹${data.totalCash.toFixed(2)}`;
+        if (isFirstPage) {
+            htmlContent += `
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border-bottom: 2px solid #2c3e50; padding-bottom: 15px; border: none;">
+                <tr>
+                    <td style="vertical-align: top; text-align: left; border: none; padding: 0;">
+                        <h1 style="margin: 0; color: #2c3e50; font-size: 22pt; text-transform: uppercase; letter-spacing: 1px;">
+                            ${label.is_driver_status ? 'Supply & Driver Record' : 'Supply Record'}
+                        </h1>
+                        <h2 style="margin: 8px 0 0 0; color: #34495e; font-size: 15pt;">Ganga Water Suppliers</h2>
+                        <p style="margin: 4px 0 0 0; color: #7f8c8d; font-size: 11pt;">Proprietor: Gendalal Patidar</p>
+                    </td>
+                    <td style="vertical-align: bottom; text-align: right; border: none; padding: 0;">
+                        <p style="margin: 0; font-size: 11pt; color: #34495e;"><strong>Date:</strong> ${format(new Date(), 'MMMM d, yyyy')}</p>
+                        <p style="margin: 4px 0 0 0; font-size: 11pt; color: #7f8c8d;"><strong>Billing Period:</strong> ${monthName} ${year}</p>
+                    </td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: none;">
+                <tr>
+                    <td style="width: 40%; padding: 0 10px 0 0; vertical-align: top; border: none;">
+                        <div style="background-color: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 6px; min-height: 100px;">
+                            <h3 style="margin-top: 0; color: #2c3e50; font-size: 11pt; border-bottom: 1px solid #dee2e6; padding-bottom: 6px; margin-bottom: 10px;">
+                                ${label.is_driver_status ? 'Driver Name' : 'Supplied To'}
+                            </h3>
+                            <p style="margin: 0; font-weight: bold; font-size: 11pt; color: #1f2937;">${label.name}</p>
+                        </div>
+                    </td>
+                    <td style="width: 60%; padding: 0 0 0 10px; vertical-align: top; border: none;">
+                        <div style="background-color: #f8f9fa; padding: 15px; border: 1px solid #e9ecef; border-radius: 6px; min-height: 100px;">
+                            <h3 style="margin-top: 0; color: #2c3e50; font-size: 11pt; border-bottom: 1px solid #dee2e6; padding-bottom: 6px; margin-bottom: 10px;">Overview</h3>
+                            ${overviewHtml}
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            `;
         }
 
-        doc.text(dayHeader, 14, yPosition);
+        // Render Table and Headers for CURRENT page chunk
+        htmlContent += `
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <thead>
+                <tr style="background-color: #2c3e50; color: white;">
+                    ${tableHeaders}
+                </tr>
+            </thead>
+            <tbody>
+        `;
 
-        yPosition += 8;
-
-        const tableHeaders = label.is_driver_status
-          ? ['#', 'Time', 'Status', 'Tankers', 'KM', 'Cash', 'Diesel (L)', 'Notes']
-          : ['#', 'Time', 'Tankers', 'Cash Amount'];
-
-        const tableData = data.entries.map((entry, index) => {
-          const tankerCount = entry.total_tankers ?? (entry.driver_status === 'absent' ? 0 : 1);
-          const statusDisplay = entry.driver_status === 'half_day' ? 'Half Day' : entry.driver_status || '-';
+        // Render Rows
+        pageRows.forEach(([day, data], idx) => {
+          const bg = idx % 2 === 0 ? '#ffffff' : '#f9f9f9';
+          const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d');
 
           if (label.is_driver_status) {
-            return [
-              (index + 1).toString(),
-              entry.time,
-              statusDisplay,
-              tankerCount.toString(),
-              entry.total_km?.toFixed(2) || '-',
-              entry.cash_taken ? `₹${entry.cash_taken.toFixed(2)}` : '-',
-              entry.diesel_added > 0 ? entry.diesel_added.toFixed(2) : '-',
-              entry.notes || '-'
-            ];
+            let statusBadge = '';
+            if (data.presentCount > 0) {
+              statusBadge = `<span style="background-color: #ecfdf5; color: #10b981; padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 8.5pt;">Present</span>`;
+            } else if (data.halfDayCount > 0) {
+              statusBadge = `<span style="background-color: #fffbeb; color: #f59e0b; padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 8.5pt;">Half Day</span>`;
+            } else if (data.absentCount > 0) {
+              statusBadge = `<span style="background-color: #fef2f2; color: #ef4444; padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 8.5pt;">Absent</span>`;
+            } else {
+              statusBadge = `<span style="color: #4b5563;">-</span>`;
+            }
+
+            const notes = data.entries.map(e => e.notes).filter(Boolean).join(', ') || '-';
+
+            htmlContent += `
+              <tr style="background-color: ${bg}; font-size: 9.5pt;">
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; color: #4b5563;">${dayDate}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; text-align: center;">${statusBadge}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; text-align: center; color: #4b5563;">${data.totalTankers}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; text-align: center; color: #4b5563;">${(data.totalKm || 0).toFixed(2)}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; text-align: right; color: #4b5563;">${data.totalCashTaken > 0 ? `₹${data.totalCashTaken.toFixed(2)}` : '-'}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; text-align: center; color: #4b5563;">${data.totalDieselAdded > 0 ? data.totalDieselAdded.toFixed(2) : '-'}</td>
+                <td style="padding: 10px 8px; border: 1px solid #dee2e6; font-size: 9pt; color: #6b7280;">${notes}</td>
+              </tr>
+            `;
+          } else {
+            htmlContent += `
+              <tr style="background-color: ${bg}; font-size: 10.5pt;">
+                <td style="padding: 10px 12px; border: 1px solid #dee2e6; color: #4b5563;">${dayDate}</td>
+                <td style="padding: 10px 12px; border: 1px solid #dee2e6; text-align: center; color: #4b5563;">${data.totalTankers}</td>
+                <td style="padding: 10px 12px; border: 1px solid #dee2e6; text-align: right; color: #4b5563;">₹${(data.totalCash || 0).toFixed(2)}</td>
+              </tr>
+            `;
           }
-          return [
-            (index + 1).toString(),
-            entry.time,
-            tankerCount.toString(),
-            entry.cash_amount ? `₹${entry.cash_amount.toFixed(2)}` : '-'
-          ];
         });
 
-        // @ts-ignore (jspdf-autotable types)
-        doc.autoTable({
-          startY: yPosition,
-          head: [tableHeaders],
-          body: tableData,
-          theme: 'grid',
-          headStyles: { fillColor: [59, 130, 246], textColor: 255 },
-          margin: { left: 14, right: 14 },
-          styles: { fontSize: 10 }
-        });
+        htmlContent += `</tbody></table>`;
 
-        // @ts-ignore (accessing internal value)
-        yPosition = doc.lastAutoTable.finalY + 10;
-
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
+        // Render Footer ONLY on the Last Page
+        if (isLastPage) {
+            htmlContent += `
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border-top: 1px solid #bdc3c7; padding-top: 15px; border: none;">
+                <tr>
+                    <td style="width: 70%; vertical-align: middle; text-align: left; border: none; padding: 15px 0 0 0;">
+                        <p style="font-weight: bold; font-size: 11pt; color: #2c3e50; margin: 0 0 5px 0;">
+                            Thank you for choosing Ganga Water Suppliers.
+                        </p>
+                        <p style="font-size: 10pt; color: #7f8c8d; margin: 0;">
+                            This document is computer-generated and serves as an official monthly supply${label.is_driver_status ? ' & driver ' : ' '}summary.
+                        </p>
+                    </td>
+                    <td style="width: 30%; text-align: right; vertical-align: middle; border: none; padding: 15px 0 0 0;">
+                        <img src="${signatureImg}" alt="Signature" style="height: 65px; margin: 0; display: inline-block;" />
+                    </td>
+                </tr>
+            </table>
+            `;
         }
+
+        htmlContent += `</div>`; // Close Page Div
       });
 
-      doc.save(`${label.name.replace(/\s+/g, '_')}_${monthName}_${year}_Summary.pdf`);
+      htmlContent += `</div>`; // Close Master Wrapper
+
+      // 6. Generate PDF with pagebreak class logic
+      const element = document.createElement('div');
+      element.innerHTML = htmlContent;
+
+      const opt = {
+        margin:       0, // Zero margin, padding is handled strictly by the internal HTML divs
+        filename:     `${label.name.replace(/\s+/g, '_')}_${monthName}_${year}_Summary.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: 'css', before: '.page-break' } // Force perfect cuts
+      };
+
+      await html2pdf().set(opt).from(element).save();
       toast.success('PDF report generated successfully');
+
     } catch (error: any) {
       toast.error('Failed to generate PDF: ' + error.message);
     } finally {
@@ -323,12 +418,7 @@ const MonthlySummary: React.FC = () => {
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
-    }
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
   };
 
   const itemVariants = {
