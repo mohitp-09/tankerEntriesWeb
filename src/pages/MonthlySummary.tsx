@@ -167,8 +167,8 @@ const MonthlySummary: React.FC = () => {
       });
 
       const sortedDailyEntries = Object.entries(dailyEntries)
-        .sort(([dayA], [dayB]) => parseInt(dayA) - parseInt(dayB))
-        .reduce((acc, [day, data]) => ({ ...acc, [day]: data }), {});
+        .sort(([dayA], [dayB]) => parseInt(dayA, 10) - parseInt(dayB, 10))
+        .reduce((acc, [day, data]) => ({ ...acc, [day]: data }), {} as Record<string, DailyEntries>);
 
       setMonthlyData({
         dailyEntries: sortedDailyEntries,
@@ -243,7 +243,9 @@ const MonthlySummary: React.FC = () => {
 
       yPosition += 10;
 
-      Object.entries(monthlyData.dailyEntries).forEach(([day, data]) => {
+      Object.entries(monthlyData.dailyEntries)
+        .sort(([dayA], [dayB]) => parseInt(dayA, 10) - parseInt(dayB, 10))
+        .forEach(([day, data]) => {
         const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'MMMM d, yyyy');
 
         doc.setFontSize(12);
@@ -601,7 +603,7 @@ const MonthlySummary: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {Object.entries(monthlyData.dailyEntries).map(([day, data]) => {
+                {Object.entries(monthlyData.dailyEntries).sort(([dayA], [dayB]) => parseInt(dayA, 10) - parseInt(dayB, 10)).map(([day, data]) => {
                   const dayDate = format(parse(`${year}-${month}-${day}`, 'yyyy-MM-dd', new Date()), 'd MMMM, yyyy');
                   const statusType = data.presentCount > 0 ? 'present' : data.halfDayCount > 0 ? 'half_day' : data.absentCount > 0 ? 'absent' : null;
 
